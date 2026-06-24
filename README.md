@@ -21,7 +21,8 @@ on the local network.
 6. **Security** — presence detection, anomaly flagging, graduated alerts.
 7. **Behavioral Analysis** — pattern-of-life modeling shared across pillars.
 
-See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the compute split and hardware,
+See [`DESIGN.md`](DESIGN.md) for the concept and tile model,
+[`ARCHITECTURE.md`](ARCHITECTURE.md) for the compute split and hardware,
 and [`ROADMAP.md`](ROADMAP.md) for the build plan.
 
 ## Status
