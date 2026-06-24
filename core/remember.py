@@ -14,6 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
+from core.bus import _compile
 from core.tile import Event
 
 HOURS = 24
@@ -64,9 +65,15 @@ class Remember:
         return self.model.expectation(topic, zone, when)
 
     def bootstrap(self, bus) -> None:
-        """Rebuild the model from the bus's durability log — the log is the memory."""
+        """Rebuild the model from the bus's durability log — the log is the memory.
+
+        Only perception events feed the pattern of life, matching attach(), so
+        internal chatter (interface/actuator/security events) in the log is ignored.
+        """
+        patterns = [_compile(p) for p in self.PERCEPTION]
         for event in bus.replay():
-            self.model.observe(event)
+            if any(p.match(event.topic) for p in patterns):
+                self.model.observe(event)
 
     #: perception topics the pattern of life is built from (not internal chatter)
     PERCEPTION = ("presence.**", "motion.**", "occupancy.**")

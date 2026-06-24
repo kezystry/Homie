@@ -27,10 +27,21 @@ alongside an existing OS.
   definition.
 - *Self-learning* lives above the OS, in Remember and the tiles.
 
-## Layout
+## Dual-boot — ready to install
+
+The setup is ready to install alongside an existing OS:
+
+- **[INSTALL.md](INSTALL.md)** — step-by-step dual-boot install (shrink, LUKS,
+  GRUB + os-prober, first boot). The existing OS is preserved and chainloaded.
+- **[boot/configuration.nix](boot/configuration.nix)** — the headless, encrypted,
+  hardened NixOS module: GRUB+os-prober, LUKS root, console autologin, the
+  `homie` daemon service.
+- **[boot/flake.nix](boot/flake.nix)** — reproducible build + atomic rollback.
 
 ```
 os/
-├── image/   # the declarative image definition (build inputs)
-└── boot/    # bootloader and dual-boot configuration
+├── INSTALL.md          # dual-boot installation guide
+└── boot/
+    ├── configuration.nix   # the system definition (fill in the <PLACEHOLDER>s)
+    └── flake.nix           # reproducible rebuilds / rollback
 ```
