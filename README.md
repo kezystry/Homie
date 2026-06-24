@@ -21,8 +21,9 @@ on the local network.
 6. **Security** — presence detection, anomaly flagging, graduated alerts.
 7. **Behavioral Analysis** — pattern-of-life modeling shared across pillars.
 
-See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the compute split and hardware.
+See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the compute split and hardware,
+and [`ROADMAP.md`](ROADMAP.md) for the build plan.
 
 ## Status
 
-Active development. License: TBD.
+Active development — building the sensor head. License: TBD.
