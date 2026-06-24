@@ -17,6 +17,7 @@ This is the map of the whole project. Prose lives in the repo (`OVERVIEW.md`,
 
 ## Building it
 - [[Always-on topology]] · [[Hardware]] · [[Roadmap]] · [[Open questions]]
+- [[Nightly ritual]] (the 23:59 sleep cycle) · [[Backlog]] (bugs/fixes/upgrades)
 - [[Decisions log]] · [[Glossary]]
 
 ## Status

@@ -21,3 +21,9 @@ chaired to a synthesis (the standing working rule).
 - **[[Reason]] wake gate** — novelty + when addressed.
 - **[[Security and Identity]]** — local recognition only; no internet identification of strangers.
 - **Dependencies** — stdlib-first; add vetted libs deliberately (pinned) when a real need lands.
+- **[[Nightly ritual]]** — a 23:59 "consolidation cycle": update → heal → consolidate memory
+  (keep the pattern of life + training photos, drop the raw tail, decay stale patterns) →
+  conditional restart. systemd timer; reversible-first ordering; auto-reverting updates.
+  Embodies the five self-* principles (self-sufficient/upgrading/learning/healing/autonomous).
+
+Known bugs/fixes/upgrades from audit: [[Backlog]].
