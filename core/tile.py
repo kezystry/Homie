@@ -18,10 +18,12 @@ import asyncio
 import importlib.util
 import json
 import logging
+import os
 import re
+import sys
 import time
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Awaitable, Callable, Literal, Protocol
 from uuid import uuid4
@@ -334,21 +336,93 @@ class InProcessChannel:
 
 
 class SubprocessChannel:
-    """Escape hatch (not yet implemented). Speaks line-delimited JSON over stdio
-    to a child in a network namespace that enforces the manifest's network policy."""
+    """Escape hatch. Runs the tile as a child process speaking line-delimited
+    JSON over stdio (PROTOCOL.md). Used when the manifest declares egress or is
+    otherwise unsafe: the process boundary contains crashes, hangs, and leaks,
+    and the deploy layer adds a network namespace to enforce the network policy.
+
+    The child's outbound act/emit/speak are forwarded through the parent's
+    permission-enforcing Context, so a child cannot drive an undeclared actuator
+    even if its own checks are bypassed.
+    """
+
+    _ROOT = Path(__file__).resolve().parents[1]
 
     def __init__(self, manifest: Manifest, ctx: Context) -> None:
         self.manifest = manifest
         self.ctx = ctx
+        self._proc: asyncio.subprocess.Process | None = None
+        self._lock: asyncio.Lock | None = None
 
     async def start(self) -> None:
-        raise NotImplementedError("SubprocessChannel is the isolation escape hatch — not built yet")
+        self._lock = asyncio.Lock()
+        self._proc = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-m",
+            "core.tile_harness",
+            str(self.manifest.path),
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            cwd=str(self._ROOT),
+            env={**os.environ, "PYTHONPATH": str(self._ROOT)},
+        )
+        await self._exchange(
+            {"type": "init", "name": self.manifest.name, "state_dir": str(self.manifest.path / "state")},
+            {"ready"},
+        )
 
-    async def stop(self, *, grace: float = 5.0) -> None: ...
-    async def send_event(self, event: Event) -> None: ...
-    async def deliver_friction(self, signal: FrictionSignal) -> None: ...
-    async def call(self, fn: str, **args) -> object: ...
-    async def check_health(self) -> bool: ...
+    async def stop(self, *, grace: float = 5.0) -> None:
+        if not self._proc:
+            return
+        try:
+            self._proc.stdin.write(b'{"type": "stop"}\n')
+            await self._proc.stdin.drain()
+            await asyncio.wait_for(self._proc.wait(), timeout=grace)
+        except Exception:
+            self._proc.kill()
+            await self._proc.wait()
+        self._proc = None
+
+    async def send_event(self, event: Event) -> None:
+        await self._exchange({"type": "event", "event": asdict(event)}, {"done"})
+
+    async def deliver_friction(self, signal: FrictionSignal) -> None:
+        await self._exchange({"type": "friction", "signal": asdict(signal)}, {"done"})
+
+    async def call(self, fn: str, **args) -> object:
+        m = await self._exchange({"type": "call", "fn": fn, "args": args}, {"result"})
+        return m["value"]
+
+    async def check_health(self) -> bool:
+        m = await self._exchange({"type": "health"}, {"health"})
+        return bool(m["ok"])
+
+    async def _exchange(self, msg: dict, terminal: set[str]) -> dict:
+        async with self._lock:
+            self._proc.stdin.write((json.dumps(msg) + "\n").encode())
+            await self._proc.stdin.drain()
+            while True:
+                line = await self._proc.stdout.readline()
+                if not line:
+                    raise RuntimeError(f"tile '{self.manifest.name}' subprocess exited")
+                m = json.loads(line)
+                kind = m["type"]
+                if kind in ("emit", "act", "speak", "log"):
+                    await self._forward(kind, m)
+                elif kind == "error":
+                    raise RuntimeError(m.get("error", "tile error"))
+                elif kind in terminal:
+                    return m
+
+    async def _forward(self, kind: str, m: dict) -> None:
+        if kind == "emit":
+            await self.ctx.emit(Event(**m["event"]))
+        elif kind == "act":
+            await self.ctx.act(m["actuator"], m["value"])
+        elif kind == "speak":
+            await self.ctx.speak(m["text"])
+        elif kind == "log":
+            self.ctx.log(m["level"], m["msg"])
 
 
 def channel_for(manifest: Manifest, ctx: Context) -> TileChannel:
