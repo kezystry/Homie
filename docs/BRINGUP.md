@@ -1,7 +1,7 @@
 # Bring-up checklist — from code to a running home
 
 What to do when you're at the hardware. The software brain is built and tested
-(135 stdlib tests); this is the order to make it physical. Detail in `PLAN.md`,
+(150 stdlib tests); this is the order to make it physical. Detail in `PLAN.md`,
 OS steps in `os/INSTALL.md`, decisions in `obsidian/Decisions log.md`.
 
 ## 0. Buy / gather

@@ -19,7 +19,7 @@ Success is the *declining rate of corrections*.
 ## Where it stands
 
 The reasoning-side spine runs and is tested today — Python 3.11+, stdlib only,
-**135 passing tests** plus an end-to-end `scripts/spine_demo.py`.
+**150 passing tests** plus an end-to-end `scripts/spine_demo.py`.
 
 **Built and tested:**
 - **Bus** (`core/bus.py`) — segment-aware glob pub/sub, per-subscriber bounded
@@ -44,14 +44,23 @@ The reasoning-side spine runs and is tested today — Python 3.11+, stdlib only,
   default-deny topic allowlist, fail-closed `PrivacyGuard`, and `(origin, seq)`
   loop suppression.
 
-**Stubbed / not started:** `Reason` (LLM decision), `Act` (Home Assistant
-gateway), `Interface` (voice + friction classification), and `Perceive` are
-signature-only stubs. The real Noise-IK transport + mDNS discovery and the Rust
-perception daemon are deploy/edge concerns not yet implemented.
+- **Reason** (`core/reason.py`) — the cortex: a novelty-gated decide loop that
+  wakes a local LLM (behind an injectable `LLMClient` seam) only when the moment is
+  rare/novel, validates the proposed tool call structurally, and routes it to a tile
+  function or a spoken line — it *proposes*, never drives an actuator.
+- **Lighting** (`tiles/lighting/`) — presence-driven, after-dark room lighting at
+  AMBIENT priority that learns to stay dark from reversals.
+- **Ritual** (`core/ritual.py`) — the in-process half of the nightly 23:59
+  consolidation: decay + snapshot + compaction, L4 sweep, self-healing, abort-gated.
 
-In short: the **inward-facing brain** (route, remember, supervise, learn) is real
-and tested; the **outward-facing edges** (decide, act, speak, sense, transport)
-are still contracts.
+**Stubbed / hardware-gated:** the real `LLMClient` (llama.cpp/Ollama on the 3060),
+the `HomeClient` (MQTT/HA gateway — `Act` itself is built and tested behind it),
+`Interface` (voice), `Perceive`, the Noise-IK transport + mDNS discovery, and the
+systemd side of the ritual are deploy/edge concerns gated on the hardware.
+
+In short: the **brain** (route, remember, supervise, learn, decide, arbitrate) is
+real and tested; the **outward edges** (the model weights, speak, sense, transport)
+are contracts waiting on the kit.
 
 ## How the pieces fit
 

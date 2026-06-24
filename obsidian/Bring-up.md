@@ -5,7 +5,7 @@ tags: [homie, plan]
 # Bring-up
 
 The order to make the software physical when you're at the hardware (full detail
-in the repo's `BRINGUP.md`). The brain is built + tested (135 tests); these are
+in the repo's `BRINGUP.md`). The brain is built + tested (150 tests); these are
 the edges that need the kit in front of you.
 
 ## Steps (each independently demoable)
