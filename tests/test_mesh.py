@@ -135,5 +135,44 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
         await bus_b.aclose()
 
 
+class FailingLink:
+    def on_receive(self, handler) -> None:
+        self._handler = handler
+
+    async def send(self, frame: dict) -> None:
+        raise ConnectionError("link down")
+
+
+class MeshHardeningTests(unittest.IsolatedAsyncioTestCase):
+    async def test_link_error_surfaced_not_swallowed(self) -> None:
+        bus = Bus()
+        downs: list[Event] = []
+        bus.subscribe("node.link.down", collect(downs))
+        bridge = MeshBridge("a", bus, FailingLink())
+        await bridge.start()
+        await bus.publish(ev("presence.arrived", zone="kitchen"))  # meshed → link.send fails
+        await bus.drain()
+        self.assertEqual(len(downs), 1)  # the link fault is announced, not hidden as a tile fault
+        await bus.publish(ev("presence.arrived", zone="hall"))  # bus still alive
+        await bus.drain()
+        await bridge.stop()
+        await bus.aclose()
+
+    async def test_boot_nonce_avoids_post_restart_false_dedup(self) -> None:
+        bus = Bus()
+        got: list[Event] = []
+        bus.subscribe("presence.arrived", collect(got))
+        bridge = MeshBridge("b", bus, InMemoryLink())
+        await bridge.start()
+        base = {"event": {"topic": "presence.arrived", "ts": 0.0, "payload": {}}, "origin": "a", "seq": 1}
+        await bridge._on_remote({**base, "boot": "BOOT1"})
+        await bridge._on_remote({**base, "boot": "BOOT1"})  # exact dup → dropped
+        await bridge._on_remote({**base, "boot": "BOOT2"})  # peer restarted: same seq, new boot → delivered
+        await bus.drain()
+        self.assertEqual(len(got), 2)
+        await bridge.stop()
+        await bus.aclose()
+
+
 if __name__ == "__main__":
     unittest.main()
