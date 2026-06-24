@@ -1,0 +1,20 @@
+# Security — a built-in tile that emerges from the spine: it watches presence
+# against the pattern of life and escalates the unexpected. It identifies no one.
+
+[tile]
+name = "security"
+summary = "Flag unexpected presence against the pattern of life; alert, never identify."
+
+[subscribes]
+events = ["presence.arrived", "presence.unknown"]
+
+[provides]
+intents = ["is everything ok", "any alerts"]
+functions = []
+
+[acts]
+actuators = []          # emits an alert; the response is your decision
+
+[permissions]
+reads = ["presence"]
+network = "local"

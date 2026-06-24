@@ -42,4 +42,18 @@ self-learning, self-healing, self-dependent.
 - [`SECURITY.md`](SECURITY.md) — the privacy, encryption, and identity model.
 - [`ROADMAP.md`](ROADMAP.md) — the build order.
 
-Status: early — building the sensor head.
+## Running it
+
+The reasoning-side spine runs today (Python 3.11+, stdlib only):
+
+```sh
+python3 -m unittest discover -s tests   # the test suite
+python3 scripts/spine_demo.py           # the loop end to end on one node
+```
+
+The demo boots the bus, Behavioral Analysis, and the Supervisor with the real
+Personal and Security tiles, then shows presence flowing through the loop —
+Personal offering the agenda, Security flagging a novel late-night visitor, and
+friction teaching Personal to go quiet.
+
+Status: early — the reasoning-node spine is taking shape; the sensor head is next.

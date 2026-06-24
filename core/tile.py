@@ -110,6 +110,7 @@ class Context(Protocol):
     async def act(self, actuator: str, value) -> None: ...
     async def emit(self, event: Event) -> None: ...
     async def speak(self, text: str) -> None: ...
+    async def recall(self, topic: str, zone: str | None, when: float): ...  # Behavioral Analysis
     def log(self, level: str, msg: str) -> None: ...
 
 
@@ -119,6 +120,7 @@ class Tile:
     can deliver friction even if the reactive surface is quarantined."""
 
     manifest: Manifest
+    state: "TileState"  # the tile's own writable surface, set by the channel
 
     async def on_event(self, event: Event, ctx: Context) -> None:
         """React to a subscribed event."""
@@ -156,12 +158,13 @@ class TileContext:
     """Concrete Context. Enforces the manifest's actuator permissions, then
     forwards to runtime-provided sinks (so it stays decoupled and testable)."""
 
-    def __init__(self, manifest: Manifest, *, emit, act, speak, log_fn) -> None:
+    def __init__(self, manifest: Manifest, *, emit, act, speak, log_fn, recall=None) -> None:
         self.manifest = manifest
         self._emit = emit
         self._act = act
         self._speak = speak
         self._log = log_fn
+        self._recall = recall
 
     async def act(self, actuator: str, value) -> None:
         if actuator not in self.manifest.actuators:
@@ -174,6 +177,12 @@ class TileContext:
 
     async def speak(self, text: str) -> None:
         await self._speak(text)
+
+    async def recall(self, topic: str, zone: str | None, when: float):
+        """Query the pattern of life (Behavioral Analysis) — what is normal here?"""
+        if self._recall is None:
+            raise RuntimeError("recall unavailable (no Remember wired into the Supervisor)")
+        return await self._recall(topic, zone, when)
 
     def log(self, level: str, msg: str) -> None:
         self._log(level, msg)
@@ -297,12 +306,13 @@ class InProcessChannel:
 
     async def start(self) -> None:
         tile_cls, learn_fn, health_fn = load_tile(self.manifest)
+        self._state = TileState(self.manifest.path / "state")
         tile = tile_cls()
         tile.manifest = self.manifest
+        tile.state = self._state
         self._tile = tile
         self._learn = learn_fn
         self._health = health_fn
-        self._state = TileState(self.manifest.path / "state")
 
     async def stop(self, *, grace: float = 5.0) -> None:
         self._tile = None
@@ -362,6 +372,7 @@ class SupervisionPolicy:
     stability_reset: float = 60.0
     quarantine_after: int = 5  # faults...
     quarantine_window: float = 600.0  # ...within this many seconds
+    reversal_window: float = 600.0  # how long an act stays attributable to a correction
 
 
 @dataclass
@@ -382,12 +393,14 @@ class Supervisor:
     routes events and friction. Routing is built from manifests; only the channel
     loader ever touches tile code."""
 
-    def __init__(self, tiles_dir: Path, bus, policy: SupervisionPolicy | None = None) -> None:
+    def __init__(self, tiles_dir: Path, bus, policy: SupervisionPolicy | None = None, *, remember=None) -> None:
         self.tiles_dir = Path(tiles_dir)
         self.bus = bus
         self.policy = policy or SupervisionPolicy()
+        self.remember = remember  # Behavioral Analysis, exposed to tiles via ctx.recall
         self._tiles: dict[str, TileRecord] = {}
         self._ledger: list[ActionRef] = []  # recent acts, for friction attribution
+        self._manual: dict[str, int] = {}  # manual-action counts, for repeat detection
 
     # discovery — manifests only, no tile code
     def discover(self) -> list[Manifest | InvalidManifest]:
@@ -464,6 +477,47 @@ class Supervisor:
             except Exception:
                 await self._on_fault(rec.name)
 
+    # friction attribution — turn a reaction into a learning signal for one tile
+    async def note_reversal(self, actuator: str, value, at: float) -> FrictionSignal | None:
+        """A human undid an actuator. Attribute it to the tile whose recent act
+        on that actuator is being reversed, and deliver the correction."""
+        recent = [r for r in self._ledger if r.actuator == actuator and at - r.at <= self.policy.reversal_window]
+        if not recent:
+            return None
+        ref = max(recent, key=lambda r: r.at)
+        if ref.value == value:  # same state — not a reversal
+            return None
+        signal = FrictionSignal(kind="reversal", at=at, target_tile=ref.tile, reverses=ref)
+        await self.deliver_friction(signal)
+        return signal
+
+    async def note_remark(self, text: str, at: float) -> FrictionSignal | None:
+        """A spoken correction — strongest signal. Attribute to the most recent
+        acting tile within the window."""
+        recent = [r for r in self._ledger if at - r.at <= self.policy.reversal_window]
+        if not recent:
+            return None
+        target = max(recent, key=lambda r: r.at).tile
+        signal = FrictionSignal(kind="remark", at=at, target_tile=target, text=text)
+        await self.deliver_friction(signal)
+        return signal
+
+    async def note_manual(self, actuator: str, at: float, *, threshold: int = 3) -> FrictionSignal | None:
+        """A human keeps doing something by hand. After `threshold` repeats,
+        nudge the tile that owns that actuator to learn to offer it."""
+        self._manual[actuator] = self._manual.get(actuator, 0) + 1
+        if self._manual[actuator] < threshold:
+            return None
+        self._manual[actuator] = 0
+        target = next(
+            (rec.name for rec in self._tiles.values() if rec.manifest and actuator in rec.manifest.actuators),
+            None,
+        )
+        signal = FrictionSignal(kind="repeat", at=at, target_tile=target, count=threshold)
+        if target:
+            await self.deliver_friction(signal)
+        return signal
+
     async def _on_fault(self, name: str) -> None:
         rec = self._tiles[name]
         now = time.time()
@@ -494,6 +548,8 @@ class Supervisor:
         async def act(actuator: str, value) -> None:
             ref = ActionRef(uuid4().hex, name, actuator, value, time.time())
             self._ledger.append(ref)
+            cutoff = ref.at - self.policy.reversal_window
+            self._ledger = [r for r in self._ledger if r.at >= cutoff]  # bounded by window
             await self.bus.publish(
                 Event("actuator.requested", ref.at, {"actuator": actuator, "value": value, "tile": name}, source=f"tile:{name}")
             )
@@ -504,7 +560,12 @@ class Supervisor:
         def log_fn(level: str, msg: str) -> None:
             log.log(getattr(logging, level.upper(), logging.INFO), msg)
 
-        return TileContext(manifest, emit=emit, act=act, speak=speak, log_fn=log_fn)
+        recall = None
+        if self.remember is not None:
+            async def recall(topic: str, zone: str | None, when: float):
+                return await self.remember.normal(topic, zone, when)
+
+        return TileContext(manifest, emit=emit, act=act, speak=speak, log_fn=log_fn, recall=recall)
 
     def status(self) -> dict[str, str]:
         return {name: rec.state for name, rec in self._tiles.items()}

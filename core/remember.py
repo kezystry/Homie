@@ -68,6 +68,17 @@ class Remember:
         for event in bus.replay():
             self.model.observe(event)
 
+    #: perception topics the pattern of life is built from (not internal chatter)
+    PERCEPTION = ("presence.**", "motion.**", "occupancy.**")
+
     def attach(self, bus) -> None:
-        """Record every event live, in addition to the bootstrap history."""
-        bus.subscribe("**", self.record, owner="core:remember")
+        """Record perception events live, on top of the bootstrap history.
+
+        Note the ordering contract: anomaly evaluation (Security/Reason) must judge
+        an event against *prior* history. A consumer that both evaluates and learns
+        from the same event must evaluate first, then commit — otherwise the event
+        masks its own novelty. Remember therefore lags evaluation by design; live
+        learning here is for consumers that are not evaluating the same instant.
+        """
+        for topic in self.PERCEPTION:
+            bus.subscribe(topic, self.record, owner="core:remember")

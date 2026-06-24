@@ -1,9 +1,11 @@
 """Personal Assistant — self-learning.
 
-Friction examples: you dismiss the morning agenda three days running -> stop
-offering it unprompted; you keep asking for it later -> shift when it offers.
+Friction is the signal: if offering the agenda gets reversed or remarked on,
+stop offering it unprompted. The system needs you less over time.
 """
 from __future__ import annotations
 
 
-async def learn(state, friction) -> None: ...
+async def learn(state, friction) -> None:
+    if friction.kind in ("reversal", "remark"):
+        await state.put("suppress_agenda", True)
