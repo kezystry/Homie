@@ -15,15 +15,20 @@
 
 ## Where things are
 
-- **Concept & roadmap:** `OVERVIEW.md`, `DESIGN.md`; the hardware build plan + the
-  decided always-on topology + the question bank live in `PLAN.md`.
-- **Engineering:** `INTERNALS.md` (decisions), `PROTOCOL.md` (tile wire protocol),
-  `SECURITY.md` (privacy/identity), `ARCHITECTURE.md`, `os/` (dual-boot NixOS + INSTALL).
-- **Code:** `core/` (`bus`, `remember`, `tile` runtime + channels, `mesh`),
-  `tiles/` (`personal`, `security`), `tests/` (44 passing), `scripts/run.py` (daemon),
-  `scripts/spine_demo.py`.
+- **Docs live in `docs/`.** `README.md` (root) is the landing page; `CLAUDE.md`
+  (root, this file) is auto-loaded agent context.
+- **Concept & roadmap:** `docs/OVERVIEW.md`, `docs/DESIGN.md`, `docs/ROADMAP.md`; the
+  hardware build plan + the decided always-on topology + the question bank live in
+  `docs/PLAN.md`; bring-up order in `docs/BRINGUP.md`; audit backlog in `docs/BACKLOG.md`.
+- **Engineering:** `docs/INTERNALS.md` (decisions), `docs/PROTOCOL.md` (tile wire
+  protocol), `docs/SECURITY.md` (privacy/identity), `docs/ARCHITECTURE.md`, `os/`
+  (dual-boot NixOS + `INSTALL.md`).
+- **Code:** `core/` (`bus`, `remember`, `tile` runtime + channels, `mesh`, `act`,
+  `reason`, `reconcile`, `consent`), `tiles/` (`personal`, `security`), `tests/`
+  (108 passing), `scripts/run.py` (daemon), `scripts/spine_demo.py`.
+- **Importable notes:** `obsidian/` is a cross-linked Obsidian vault mirroring the docs.
 
-## Decided architecture (see PLAN.md)
+## Decided architecture (see docs/PLAN.md)
 
 Tiered always-on: **Pi** = 24/7 lightweight learning floor + perception; **mini-PC** =
 wired Home Assistant pillar; **RTX 3060 desktop** = Homie-OS-only (Proton) on-demand

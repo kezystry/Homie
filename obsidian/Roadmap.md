@@ -4,7 +4,7 @@ tags: [homie, plan]
 
 # Roadmap
 
-Build order (full detail in the repo's `PLAN.md`). Each phase ships something usable.
+Build order (full detail in the repo's `docs/PLAN.md`). Each phase ships something usable.
 
 0. **Buy & prep** — Pi 5 8 GB + AI HAT+ ([[Hardware]]); migrate Trådfri bulbs onto Dirigera; pick the anchor.
 1. **Validate the OS in a VM** (`nixos-rebuild build-vm`) before the real disk; add NVIDIA/CUDA.
@@ -16,6 +16,6 @@ Build order (full detail in the repo's `PLAN.md`). Each phase ships something us
 7. **Interface (voice) + gestures** — and the QLoRA fine-tune loop from friction.
 8. **Hardening/ops** — encrypted backup, Nix-packaged app, LUKS-unlock, the sensor head.
 
-## Built & tested today (83 tests)
+## Built & tested today (108 tests)
 [[Bus]] · [[Remember]] · tile runtime · Personal + Security tiles · friction loop
 ([[Act]] + StateReconciler) · tool-call schemas ([[Reason]]) · [[Consent and Gestures]] · [[Mesh]] bridge.

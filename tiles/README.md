@@ -21,6 +21,6 @@ it in. Self-learning, self-healing, and isolation are guaranteed by the runtime
 
 A tile runs in-process by default; declaring `network = "egress:<host>"` (or a
 third-party origin) makes the runtime isolate it in a subprocess. Either way the
-core speaks to it through the same wire protocol — see [`../PROTOCOL.md`](../PROTOCOL.md).
+core speaks to it through the same wire protocol — see [`../docs/PROTOCOL.md`](../docs/PROTOCOL.md).
 
 [`personal/`](personal/) is the reference implementation.

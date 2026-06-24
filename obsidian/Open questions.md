@@ -4,7 +4,7 @@ tags: [homie, questions]
 
 # Open questions
 
-Live design questions (the full 63-item hardware/setup bank is in the repo's `PLAN.md` §9).
+Live design questions (the full 63-item hardware/setup bank is in the repo's `docs/PLAN.md` §9).
 
 ## Conceptual
 - **How [[Reason]] consumes [[Remember]]** — is a per-(topic,zone,hour) rate enough, or does it
