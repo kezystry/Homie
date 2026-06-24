@@ -59,6 +59,7 @@ next. See [`OVERVIEW.md`](OVERVIEW.md).
 ## Docs
 
 - [`OVERVIEW.md`](OVERVIEW.md) — the big picture and roadmap
+- [`PLAN.md`](PLAN.md) — the build plan for real hardware (always-on topology + question bank)
 - [`DESIGN.md`](DESIGN.md) — why it works this way
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — how it's built
 - [`INTERNALS.md`](INTERNALS.md) — the engineering decisions
