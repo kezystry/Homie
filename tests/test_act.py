@@ -102,6 +102,13 @@ class ActTests(unittest.IsolatedAsyncioTestCase):
 
 
 class CommandLogTests(unittest.TestCase):
+    def test_take_echo_prefers_most_recent(self) -> None:
+        log = CommandLog(window=5.0)
+        log.record("light.lr", "on", "tile_a")
+        log.record("light.lr", "on", "tile_b")  # newer command, same entity+value
+        echo = log.take_echo("light.lr", "on")
+        self.assertEqual(echo.tile, "tile_b")  # most-recent disambiguates (no HA correlation id)
+
     def test_echo_match_pop_and_window(self) -> None:
         clk = FakeClock()
         log = CommandLog(window=5.0, clock=clk)

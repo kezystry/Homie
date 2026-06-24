@@ -441,9 +441,10 @@ class SubprocessChannel:
 
     _ROOT = Path(__file__).resolve().parents[1]
 
-    def __init__(self, manifest: Manifest, ctx: Context) -> None:
+    def __init__(self, manifest: Manifest, ctx: Context, *, call_timeout: float = 10.0) -> None:
         self.manifest = manifest
         self.ctx = ctx
+        self.call_timeout = call_timeout  # kill a child that wedges past this
         self._proc: asyncio.subprocess.Process | None = None
         self._lock: asyncio.Lock | None = None
 
@@ -467,13 +468,17 @@ class SubprocessChannel:
     async def stop(self, *, grace: float = 5.0) -> None:
         if not self._proc:
             return
-        try:
-            self._proc.stdin.write(b'{"type": "stop"}\n')
-            await self._proc.stdin.drain()
-            await asyncio.wait_for(self._proc.wait(), timeout=grace)
-        except Exception:
-            self._proc.kill()
-            await self._proc.wait()
+        if self._proc.returncode is None:  # still running — ask, then kill
+            try:
+                self._proc.stdin.write(b'{"type": "stop"}\n')
+                await self._proc.stdin.drain()
+                await asyncio.wait_for(self._proc.wait(), timeout=grace)
+            except Exception:
+                try:
+                    self._proc.kill()
+                    await self._proc.wait()
+                except ProcessLookupError:
+                    pass  # already gone
         self._proc = None
 
     async def send_event(self, event: Event) -> None:
@@ -494,18 +499,28 @@ class SubprocessChannel:
         async with self._lock:
             self._proc.stdin.write((json.dumps(msg) + "\n").encode())
             await self._proc.stdin.drain()
-            while True:
-                line = await self._proc.stdout.readline()
-                if not line:
-                    raise RuntimeError(f"tile '{self.manifest.name}' subprocess exited")
-                m = json.loads(line)
-                kind = m["type"]
-                if kind in ("emit", "act", "speak", "log"):
-                    await self._forward(kind, m)
-                elif kind == "error":
-                    raise RuntimeError(m.get("error", "tile error"))
-                elif kind in terminal:
-                    return m
+            try:
+                return await asyncio.wait_for(self._read_until(terminal), timeout=self.call_timeout)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                # a wedged child must not hold the channel: kill it so the next
+                # call starts a fresh process rather than a half-spoken protocol
+                self._proc.kill()
+                await self._proc.wait()
+                raise RuntimeError(f"tile '{self.manifest.name}' timed out — killed")
+
+    async def _read_until(self, terminal: set[str]) -> dict:
+        while True:
+            line = await self._proc.stdout.readline()
+            if not line:
+                raise RuntimeError(f"tile '{self.manifest.name}' subprocess exited")
+            m = json.loads(line)
+            kind = m["type"]
+            if kind in ("emit", "act", "speak", "log"):
+                await self._forward(kind, m)
+            elif kind == "error":
+                raise RuntimeError(m.get("error", "tile error"))
+            elif kind in terminal:
+                return m
 
     async def _forward(self, kind: str, m: dict) -> None:
         if kind == "emit":
@@ -727,10 +742,10 @@ class Supervisor:
         if len(times) < threshold:
             return None
         self._manual[actuator] = []  # reset after firing
-        target = next(
-            (rec.name for rec in self._tiles.values() if rec.manifest and actuator in rec.manifest.actuators),
-            None,
-        )
+        # attribute to the tile that most recently acted on this actuator, else any owner
+        owners = [rec.name for rec in self._tiles.values() if rec.manifest and actuator in rec.manifest.actuators]
+        recent = [r.tile for r in reversed(self._ledger) if r.actuator == actuator and r.tile in owners]
+        target = recent[0] if recent else (owners[0] if owners else None)
         signal = FrictionSignal(kind="repeat", at=at, target_tile=target, count=threshold)
         if target:
             await self.deliver_friction(signal)

@@ -4,7 +4,7 @@ Run: python3 -m unittest discover -s tests
 """
 import json
 import unittest
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from core.remember import EPS, HALF_LIFE_DAYS, PatternModel
 from core.tile import Event
@@ -123,6 +123,17 @@ class DecayTests(unittest.TestCase):
         m = PatternModel()
         with self.assertRaises(ValueError):
             m.restore({"version": 99, "keys": []})
+
+    def test_pinned_timezone_buckets_by_zone(self) -> None:
+        # an event at 12:00 UTC lands in the hour-12 bucket of a UTC-pinned model
+        ts = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc).timestamp()
+        m = PatternModel(tz="UTC")
+        m.observe(ev("presence.arrived", ts))
+        q12 = datetime(2026, 1, 2, 12, 0, 0, tzinfo=timezone.utc).timestamp()  # next day, hour 12 UTC
+        q13 = datetime(2026, 1, 2, 13, 0, 0, tzinfo=timezone.utc).timestamp()
+        self.assertGreater(m.expectation("presence.arrived", "kitchen", q12).count, 0.0)
+        self.assertEqual(m.expectation("presence.arrived", "kitchen", q13).count, 0.0)  # different bucket
+        self.assertEqual(m.snapshot()["tz"], "UTC")  # tz recorded for portable restore
 
 
 if __name__ == "__main__":

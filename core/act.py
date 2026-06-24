@@ -98,9 +98,12 @@ class CommandLog:
 
     def take_echo(self, entity_id: str, value: object) -> PendingCommand | None:
         """Pop and return a matching outstanding command iff this change is an echo
-        within the window; else None. Popping makes each command absorb one echo."""
+        within the window; else None. Prefers the MOST RECENT matching command (HA
+        state changes carry no correlation id, so recency is the best disambiguator),
+        and popping makes each command absorb at most one echo."""
         self._evict()
-        for i, c in enumerate(self._pending):
+        for i in range(len(self._pending) - 1, -1, -1):  # newest first
+            c = self._pending[i]
             if c.entity_id == entity_id and c.value == value:
                 return self._pending.pop(i)
         return None

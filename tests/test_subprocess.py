@@ -103,5 +103,45 @@ class SubprocessChannelTests(unittest.IsolatedAsyncioTestCase):
                 await bus.aclose()
 
 
+HANG_HANDLERS = (
+    "import asyncio\n"
+    "from core.tile import Context, Event, Tile\n"
+    "class Hang(Tile):\n"
+    "    async def on_event(self, event, ctx):\n"
+    "        await asyncio.sleep(1000)\n"  # wedge forever
+)
+HANG_TOML = (
+    '[tile]\nname = "hang"\nsummary = "wedges on event"\n'
+    '[subscribes]\nevents = ["trigger"]\n'
+    "[provides]\nintents = []\nfunctions = []\n"
+    "[acts]\nactuators = []\n"
+    '[permissions]\nreads = []\nnetwork = "egress:example.com"\n'  # → SubprocessChannel
+)
+
+
+class SubprocessTimeoutTests(unittest.IsolatedAsyncioTestCase):
+    async def test_wedged_child_is_killed_and_raises(self) -> None:
+        from core.tile import SubprocessChannel, TileContext, load_manifest
+
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            t = root / "hang"
+            t.mkdir(parents=True)
+            (t / "tile.toml").write_text(HANG_TOML, "utf-8")
+            (t / "handlers.py").write_text(HANG_HANDLERS, "utf-8")
+
+            async def noop(*a, **k):
+                return None
+
+            manifest = load_manifest(t / "tile.toml")
+            ctx = TileContext(manifest, emit=noop, act=noop, speak=noop, log_fn=lambda *a: None)
+            ch = SubprocessChannel(manifest, ctx, call_timeout=0.3)
+            await ch.start()
+            with self.assertRaises(RuntimeError):  # wedged child → timeout → killed → raise
+                await ch.send_event(Event("trigger", 0.0))
+            self.assertIsNotNone(ch._proc.returncode)  # process was reaped, not left wedged
+            await ch.stop()
+
+
 if __name__ == "__main__":
     unittest.main()

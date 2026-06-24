@@ -16,8 +16,10 @@ from __future__ import annotations
 
 import logging
 import math
+import os
 from dataclasses import dataclass
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from core.bus import _compile
 from core.tile import Event
@@ -51,11 +53,17 @@ class PatternModel:
     `last_update` is one timestamp per key — decay is memoryless, so ageing the
     whole vector to a common time equals per-bucket bookkeeping at 1/24 the cost."""
 
-    def __init__(self) -> None:
+    def __init__(self, tz: str | None = None) -> None:
+        self._tz = tz  # IANA name (e.g. "Europe/Berlin"); None = host local time
+        self._zone = ZoneInfo(tz) if tz else None
         self._w: dict[Key, list[float]] = {}  # decayed event mass per hour
         self._days: dict[Key, float] = {}  # decayed distinct-day mass (denominator)
         self._last: dict[Key, float] = {}  # last update, epoch seconds
         self._lastd: dict[Key, str] = {}  # ISO date of last observation (distinct-day gate)
+
+    def _dt(self, ts: float) -> datetime:
+        """Local time in the pinned zone — so hour buckets are stable across hosts."""
+        return datetime.fromtimestamp(ts, self._zone) if self._zone else datetime.fromtimestamp(ts)
 
     @staticmethod
     def _factor(dt: float) -> float:
@@ -69,7 +77,7 @@ class PatternModel:
         for j in range(HOURS):
             w[j] *= d
         self._days[key] = self._days.get(key, 0.0) * d
-        when = datetime.fromtimestamp(t)
+        when = self._dt(t)
         today = when.date().isoformat()
         if self._lastd.get(key) != today:  # denominator counts distinct days
             self._days[key] += 1.0
@@ -82,7 +90,7 @@ class PatternModel:
         if key not in self._w:
             return Expectation(rate=0.0, count=0.0, days=0.0, novel=True)
         d = self._factor(when - self._last[key])  # decay a scratch copy; no mutation
-        count = self._w[key][datetime.fromtimestamp(when).hour] * d
+        count = self._w[key][self._dt(when).hour] * d
         days = self._days[key] * d
         rate = count / days if days > 0.0 else 0.0  # d cancels: a stopped pattern's rate holds
         return Expectation(rate=rate, count=count, days=days, novel=False)
@@ -116,9 +124,12 @@ class PatternModel:
                     "last_obs_date": self._lastd.get(key),
                 }
             )
-        return {"version": SNAPSHOT_VERSION, "hours": HOURS, "half_life_days": HALF_LIFE_DAYS, "keys": keys}
+        return {"version": SNAPSHOT_VERSION, "hours": HOURS, "half_life_days": HALF_LIFE_DAYS, "tz": self._tz, "keys": keys}
 
     def restore(self, snap: dict) -> None:
+        snap_tz = snap.get("tz")
+        if snap_tz != self._tz:  # buckets were frozen in the old zone; flag the drift
+            log.warning("remember: snapshot tz %r != configured tz %r — hour buckets may be offset", snap_tz, self._tz)
         version = snap.get("version", 1)
         if version == 1:
             self._restore_v1(snap)
@@ -162,7 +173,7 @@ class Remember:
     PERCEPTION = ("presence.**", "motion.**", "occupancy.**")
 
     def __init__(self) -> None:
-        self.model = PatternModel()
+        self.model = PatternModel(tz=os.environ.get("HOMIE_TZ"))  # pin the home's zone if set
 
     async def record(self, event: Event) -> None:
         self.model.observe(event)
