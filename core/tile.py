@@ -134,6 +134,7 @@ class Context(Protocol):
     async def emit(self, event: Event) -> None: ...
     async def speak(self, text: str) -> None: ...
     async def recall(self, topic: str, zone: str | None, when: float): ...  # Behavioral Analysis
+    async def confirm(self, prompt: str, *, risk: str = "medium") -> bool: ...  # ask for a yes/no
     def log(self, level: str, msg: str) -> None: ...
 
 
@@ -181,13 +182,14 @@ class TileContext:
     """Concrete Context. Enforces the manifest's actuator permissions, then
     forwards to runtime-provided sinks (so it stays decoupled and testable)."""
 
-    def __init__(self, manifest: Manifest, *, emit, act, speak, log_fn, recall=None) -> None:
+    def __init__(self, manifest: Manifest, *, emit, act, speak, log_fn, recall=None, confirm=None) -> None:
         self.manifest = manifest
         self._emit = emit
         self._act = act
         self._speak = speak
         self._log = log_fn
         self._recall = recall
+        self._confirm = confirm
 
     async def act(self, actuator: str, value) -> None:
         if actuator not in self.manifest.actuators:
@@ -206,6 +208,14 @@ class TileContext:
         if self._recall is None:
             raise RuntimeError("recall unavailable (no Remember wired into the Supervisor)")
         return await self._recall(topic, zone, when)
+
+    async def confirm(self, prompt: str, *, risk: str = "medium") -> bool:
+        """Ask the human a yes/no (answered by gesture or voice). Fails safe to
+        False (don't act) on no answer. Never use this to gate a safety-critical
+        actuator — those are never-autonomous via the act-map."""
+        if self._confirm is None:
+            raise RuntimeError("confirm unavailable (no Consent wired into the Supervisor)")
+        return await self._confirm(prompt, risk=risk)
 
     def log(self, level: str, msg: str) -> None:
         self._log(level, msg)
@@ -527,11 +537,12 @@ class Supervisor:
     routes events and friction. Routing is built from manifests; only the channel
     loader ever touches tile code."""
 
-    def __init__(self, tiles_dir: Path, bus, policy: SupervisionPolicy | None = None, *, remember=None) -> None:
+    def __init__(self, tiles_dir: Path, bus, policy: SupervisionPolicy | None = None, *, remember=None, consent=None) -> None:
         self.tiles_dir = Path(tiles_dir)
         self.bus = bus
         self.policy = policy or SupervisionPolicy()
         self.remember = remember  # Behavioral Analysis, exposed to tiles via ctx.recall
+        self.consent = consent  # confirmation gate, exposed to tiles via ctx.confirm
         self._tiles: dict[str, TileRecord] = {}
         self._ledger: list[ActionRef] = []  # recent acts, for friction attribution
         self._manual: dict[str, int] = {}  # manual-action counts, for repeat detection
@@ -739,7 +750,12 @@ class Supervisor:
             async def recall(topic: str, zone: str | None, when: float):
                 return await self.remember.normal(topic, zone, when)
 
-        return TileContext(manifest, emit=emit, act=act, speak=speak, log_fn=log_fn, recall=recall)
+        confirm = None
+        if self.consent is not None:
+            async def confirm(prompt: str, *, risk: str = "medium"):
+                return await self.consent.request(prompt, actuator=None, risk=risk)
+
+        return TileContext(manifest, emit=emit, act=act, speak=speak, log_fn=log_fn, recall=recall, confirm=confirm)
 
     def status(self) -> dict[str, str]:
         return {name: rec.state for name, rec in self._tiles.items()}

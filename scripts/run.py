@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from core.bus import Bus  # noqa: E402
+from core.consent import Consent  # noqa: E402
 from core.remember import Remember  # noqa: E402
 from core.tile import Supervisor  # noqa: E402
 
@@ -40,7 +41,9 @@ async def main() -> None:
     remember = Remember()
     remember.bootstrap(bus)  # rebuild the pattern of life from snapshot + tail
     remember.attach(bus)  # keep learning from live perception
-    sup = Supervisor(ROOT / "tiles", bus, remember=remember)
+    consent = Consent(bus)  # the confirmation gate (answered by gesture/voice)
+    await consent.start()
+    sup = Supervisor(ROOT / "tiles", bus, remember=remember, consent=consent)
     await sup.start_all()
     print(f"homie: up with tiles {sup.status()}", flush=True)
     asyncio.ensure_future(_housekeep(bus, remember))

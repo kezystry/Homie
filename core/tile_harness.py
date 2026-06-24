@@ -52,10 +52,13 @@ def _make_ctx(manifest) -> TileContext:
     async def recall(topic, zone, when):  # behavioral recall isn't bridged to subprocess tiles
         raise RuntimeError("recall is not available to out-of-process tiles")
 
+    async def confirm(prompt, *, risk="medium"):  # nor is the confirmation gate (yet)
+        raise RuntimeError("confirm is not available to out-of-process tiles")
+
     def log_fn(level: str, msg: str) -> None:
         _write({"type": "log", "level": level, "msg": msg})
 
-    return TileContext(manifest, emit=emit, act=act, speak=speak, log_fn=log_fn, recall=recall)
+    return TileContext(manifest, emit=emit, act=act, speak=speak, log_fn=log_fn, recall=recall, confirm=confirm)
 
 
 async def _stdin_reader() -> asyncio.StreamReader:
