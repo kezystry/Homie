@@ -1,30 +1,42 @@
 # Homie
 
-Self-hosted, local-first home intelligence. Homie perceives a home, learns its
-patterns of life, and acts on them — entirely on your own hardware. Data stays
-on the local network.
+Private. Local-first. Headless.
+
+Homie is a home intelligence that perceives a home, learns its pattern of life,
+and acts on it — running entirely on hardware you own, on its own hardened OS,
+with nothing leaving your network. The inspiration is *The Machine* from
+*Person of Interest*: quiet, resilient, ever-present — reimagined as something
+personal and private.
+
+## The loop
+
+Five steps: **Perceive → Remember → Reason → Act → Interface.** *Remember*
+(Behavioral Analysis) is the heart; the *Interface* is voice-first.
+
+## Shape
+
+A minimal **core** (the loop, plus Security) and an open set of self-contained
+**tiles**. The core never depends on a tile. Tiles are living cells —
+self-learning, self-healing, self-dependent.
 
 ## Principles
 
-- **Local-first** — perception and reasoning run on-premises.
-- **Privacy by design** — thermal and radar sensing over cameras.
-- **Ambient** — the sensor head is disguised as a smoke detector.
-- **Modular** — seven pillars compose into one system.
+- **Local-first** — perception and reasoning run on your hardware; data stays
+  on your network.
+- **Private by default** — encrypted at rest, no cloud, no accounts, no
+  telemetry.
+- **Ambient** — headless and text-first; it disappears into the home.
+- **Resilient** — runs as an encrypted mesh across your devices; losing one
+  doesn't stop it.
+- **Modular** — capability is added as tiles, never by touching the core.
 
-## Pillars
+## Docs
 
-1. **Self-Learning** — models the household's routines.
-2. **Home Assistant Control** — actuation layer for lights, climate, devices.
-3. **Personal Assistant** — calendar, reminders, tasks.
-4. **Werkstatt** — Pokémon card analysis and restoration; Shopify via MCP.
-5. **Kitchen Assistant** — recipes, inventory, cooking.
-6. **Security** — presence detection, anomaly flagging, graduated alerts.
-7. **Behavioral Analysis** — pattern-of-life modeling shared across pillars.
+- [`DESIGN.md`](DESIGN.md) — why it works this way: the loop, friction learning,
+  the tile contract.
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — how it's built: the OS, the mesh, the
+  nodes, the layout.
+- [`SECURITY.md`](SECURITY.md) — the privacy, encryption, and identity model.
+- [`ROADMAP.md`](ROADMAP.md) — the build order.
 
-See [`DESIGN.md`](DESIGN.md) for the concept and tile model,
-[`ARCHITECTURE.md`](ARCHITECTURE.md) for the compute split and hardware,
-and [`ROADMAP.md`](ROADMAP.md) for the build plan.
-
-## Status
-
-Active development — building the sensor head. License: TBD.
+Status: early — building the sensor head.
