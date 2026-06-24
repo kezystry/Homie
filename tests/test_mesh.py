@@ -1,0 +1,139 @@
+"""Mesh tests — node-transparent bridging, default-deny, privacy, loop suppression.
+
+Run: python3 -m unittest discover -s tests
+"""
+import unittest
+
+from core.bus import Bus
+from core.mesh import MeshBridge, MeshPolicy, PrivacyGuard
+from core.tile import Event
+
+
+class InMemoryLink:
+    """A paired in-memory Link standing in for the encrypted transport."""
+
+    def __init__(self) -> None:
+        self._peer: InMemoryLink | None = None
+        self._handler = None
+
+    @staticmethod
+    def pair() -> tuple["InMemoryLink", "InMemoryLink"]:
+        a, b = InMemoryLink(), InMemoryLink()
+        a._peer, b._peer = b, a
+        return a, b
+
+    def on_receive(self, handler) -> None:
+        self._handler = handler
+
+    async def send(self, frame: dict) -> None:
+        if self._peer and self._peer._handler:
+            await self._peer._handler(frame)
+
+
+def collect(sink: list):
+    async def handler(e: Event) -> None:
+        sink.append(e)
+
+    return handler
+
+
+def ev(topic: str, **payload) -> Event:
+    return Event(topic=topic, ts=0.0, payload=payload)
+
+
+class GuardTests(unittest.TestCase):
+    def test_blocks_imagery_and_vectors(self) -> None:
+        g = PrivacyGuard()
+        self.assertTrue(g.permits(ev("presence.arrived", zone="kitchen")))
+        self.assertFalse(g.permits(ev("sensor.camera.frame")))
+        self.assertFalse(g.permits(ev("presence.unknown", vector=[1, 2, 3])))
+        self.assertFalse(g.permits(ev("x.y", blob="z" * 5000)))
+
+    def test_policy_default_deny(self) -> None:
+        p = MeshPolicy()
+        self.assertTrue(p.is_meshed("presence.arrived"))
+        self.assertTrue(p.is_meshed("security.alert"))
+        self.assertFalse(p.is_meshed("interface.say"))  # voice stays node-local
+
+
+class BridgeTests(unittest.IsolatedAsyncioTestCase):
+    async def _two_nodes(self):
+        bus_a, bus_b = Bus(), Bus()
+        link_a, link_b = InMemoryLink.pair()
+        bridge_a = MeshBridge("a", bus_a, link_a)
+        bridge_b = MeshBridge("b", bus_b, link_b)
+        await bridge_a.start()
+        await bridge_b.start()
+        return bus_a, bus_b, bridge_a, bridge_b
+
+    async def test_event_crosses_to_peer(self) -> None:
+        bus_a, bus_b, *_ = await self._two_nodes()
+        got_b: list[Event] = []
+        bus_b.subscribe("presence.arrived", collect(got_b))
+        await bus_a.publish(ev("presence.arrived", zone="kitchen"))
+        await bus_a.drain()
+        await bus_b.drain()
+        self.assertEqual(len(got_b), 1)
+        self.assertEqual(got_b[0].payload["zone"], "kitchen")
+        self.assertEqual(got_b[0].origin, "a")  # source preserved
+        await bus_a.aclose()
+        await bus_b.aclose()
+
+    async def test_no_loop_back(self) -> None:
+        bus_a, bus_b, *_ = await self._two_nodes()
+        got_a, got_b = [], []
+        bus_a.subscribe("presence.arrived", collect(got_a))
+        bus_b.subscribe("presence.arrived", collect(got_b))
+        await bus_a.publish(ev("presence.arrived", zone="hall"))
+        await bus_a.drain()
+        await bus_b.drain()
+        await bus_a.drain()  # settle any bounce-back attempt
+        self.assertEqual(len(got_a), 1)  # the original, not a duplicate
+        self.assertEqual(len(got_b), 1)
+        await bus_a.aclose()
+        await bus_b.aclose()
+
+    async def test_non_allowlisted_topic_stays_local(self) -> None:
+        bus_a, bus_b, *_ = await self._two_nodes()
+        got_b: list[Event] = []
+        bus_b.subscribe("interface.say", collect(got_b))
+        await bus_a.publish(ev("interface.say", text="hello"))
+        await bus_a.drain()
+        await bus_b.drain()
+        self.assertEqual(got_b, [])  # default-deny
+        await bus_a.aclose()
+        await bus_b.aclose()
+
+    async def test_privacy_blocks_meshed_but_forbidden(self) -> None:
+        # allow sensor.** so only the PrivacyGuard can stop a raw frame
+        bus_a, bus_b = Bus(), Bus()
+        link_a, link_b = InMemoryLink.pair()
+        a = MeshBridge("a", bus_a, link_a, policy=MeshPolicy(("sensor.**",)))
+        b = MeshBridge("b", bus_b, link_b, policy=MeshPolicy(("sensor.**",)))
+        await a.start()
+        await b.start()
+        got_b: list[Event] = []
+        bus_b.subscribe("sensor.**", collect(got_b))
+        await bus_a.publish(ev("sensor.camera.frame", data="x"))  # forbidden
+        await bus_a.publish(ev("sensor.temp", c=21))  # allowed
+        await bus_a.drain()
+        await bus_b.drain()
+        self.assertEqual([e.topic for e in got_b], ["sensor.temp"])
+        await bus_a.aclose()
+        await bus_b.aclose()
+
+    async def test_dedup_drops_repeat_frame(self) -> None:
+        bus_a, bus_b, _, bridge_b = await self._two_nodes()
+        got_b: list[Event] = []
+        bus_b.subscribe("presence.arrived", collect(got_b))
+        frame = {"event": {"topic": "presence.arrived", "ts": 0.0, "payload": {}}, "origin": "a", "seq": 7}
+        await bridge_b._on_remote(frame)
+        await bridge_b._on_remote(frame)  # same (origin, seq)
+        await bus_b.drain()
+        self.assertEqual(len(got_b), 1)
+        await bus_a.aclose()
+        await bus_b.aclose()
+
+
+if __name__ == "__main__":
+    unittest.main()
