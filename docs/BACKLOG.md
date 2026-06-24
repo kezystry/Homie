@@ -103,6 +103,9 @@ wiring, the nightly-ritual systemd units, and OS validation.**
    don't guard `link.send`; a dropped link masquerades as a tile fault, no retry/surfacing.
 9. **Single-resident friction attribution [self-learning].** "most-recent-act wins" misfires
    with overlapping tiles; `note_manual` picks by dict order. *Fix:* scope by actuator/zone.
+   *Partial:* `FrictionSignal` now carries `zone`/`actor`, stamped by `note_*` and supplied
+   by the `StateReconciler` context resolver — the primitive for per-person/zone attribution
+   and the privacy exclusions. Ledger-level zone scoping lands with the perception wiring (M3).
 
 ### Low / hygiene
 10. **`_housekeep` is fire-and-forget [self-sufficiency].** If it dies, compaction stops and

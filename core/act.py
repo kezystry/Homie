@@ -82,29 +82,50 @@ class PendingCommand:
     at: float
 
 
+def _identity(value: object) -> object:
+    return value
+
+
 class CommandLog:
     """Records commands Homie issues so the resulting state echo can be matched
     and suppressed. Shared between Act (writer) and StateReconciler (matcher);
-    bounded by the reconciliation window. Uses an injectable clock for tests."""
+    bounded by the reconciliation window. Uses an injectable clock for tests.
 
-    def __init__(self, window: float = 5.0, *, clock: Callable[[], float] = time.time) -> None:
+    `canonical` normalizes a value to the form the home echoes it back in before
+    equality is tested. Homie may drive `{"state": "on", "brightness_pct": 40}`
+    while HA echoes brightness as 102/255 — without canonicalization the echo
+    wouldn't match, and Homie would read its own command as a human reversal,
+    poisoning the friction loop. The default is identity; the real HA adapter
+    supplies the entity-aware normalizer."""
+
+    def __init__(
+        self,
+        window: float = 5.0,
+        *,
+        clock: Callable[[], float] = time.time,
+        canonical: Callable[[object], object] = _identity,
+    ) -> None:
         self._window = window
         self._clock = clock
+        self._canon = canonical
         self._pending: list[PendingCommand] = []
 
     def record(self, entity_id: str, value: object, tile: str | None) -> None:
-        self._pending.append(PendingCommand(entity_id, value, tile, self._clock()))
+        # store the canonical form so it compares equal to the canonicalized echo
+        self._pending.append(PendingCommand(entity_id, self._canon(value), tile, self._clock()))
         self._evict()
 
     def take_echo(self, entity_id: str, value: object) -> PendingCommand | None:
         """Pop and return a matching outstanding command iff this change is an echo
         within the window; else None. Prefers the MOST RECENT matching command (HA
         state changes carry no correlation id, so recency is the best disambiguator),
-        and popping makes each command absorb at most one echo."""
+        and popping makes each command absorb at most one echo. Both sides are
+        canonicalized so differing-but-equivalent representations still match."""
         self._evict()
+        target = self._canon(value)
         for i in range(len(self._pending) - 1, -1, -1):  # newest first
             c = self._pending[i]
-            if c.entity_id == entity_id and c.value == value:
+            if c.entity_id == entity_id and c.value == target:
                 return self._pending.pop(i)
         return None
 

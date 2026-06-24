@@ -124,6 +124,11 @@ class FrictionSignal:
     reverses: ActionRef | None = None
     text: str | None = None  # spoken remark
     count: int = 0  # repeats seen in window
+    # Context stamped at capture (BACKLOG #9): who triggered the correction and
+    # where. Used downstream for per-person attribution and for the privacy
+    # exclusions (never train on guests / sensitive zones). None = unknown.
+    zone: str | None = None
+    actor: str | None = None
 
 
 @dataclass(frozen=True)
@@ -702,31 +707,33 @@ class Supervisor:
                 await self._on_fault(rec.name)
 
     # friction attribution — turn a reaction into a learning signal for one tile
-    async def note_reversal(self, actuator: str, value, at: float) -> FrictionSignal | None:
+    async def note_reversal(self, actuator: str, value, at: float, *, zone: str | None = None, actor: str | None = None) -> FrictionSignal | None:
         """A human undid an actuator. Attribute it to the tile whose recent act
-        on that actuator is being reversed, and deliver the correction."""
+        on that actuator is being reversed, and deliver the correction. `zone`/
+        `actor` (when known) are stamped on the signal for per-person learning and
+        the privacy exclusions."""
         recent = [r for r in self._ledger if r.actuator == actuator and at - r.at <= self.policy.reversal_window]
         if not recent:
             return None
         ref = max(recent, key=lambda r: r.at)
         if ref.value == value:  # same state — not a reversal
             return None
-        signal = FrictionSignal(kind="reversal", at=at, target_tile=ref.tile, reverses=ref)
+        signal = FrictionSignal(kind="reversal", at=at, target_tile=ref.tile, reverses=ref, zone=zone, actor=actor)
         await self.deliver_friction(signal)
         return signal
 
-    async def note_remark(self, text: str, at: float) -> FrictionSignal | None:
+    async def note_remark(self, text: str, at: float, *, zone: str | None = None, actor: str | None = None) -> FrictionSignal | None:
         """A spoken correction — strongest signal. Attribute to the most recent
         acting tile within the window."""
         recent = [r for r in self._ledger if at - r.at <= self.policy.reversal_window]
         if not recent:
             return None
         target = max(recent, key=lambda r: r.at).tile
-        signal = FrictionSignal(kind="remark", at=at, target_tile=target, text=text)
+        signal = FrictionSignal(kind="remark", at=at, target_tile=target, text=text, zone=zone, actor=actor)
         await self.deliver_friction(signal)
         return signal
 
-    async def note_manual(self, actuator: str, at: float, *, threshold: int = 3) -> FrictionSignal | None:
+    async def note_manual(self, actuator: str, at: float, *, threshold: int = 3, zone: str | None = None, actor: str | None = None) -> FrictionSignal | None:
         """A human keeps doing something by hand. After `threshold` repeats within
         the window, nudge the tile that owns that actuator to learn to offer it."""
         window = self.policy.manual_window
@@ -746,7 +753,7 @@ class Supervisor:
         owners = [rec.name for rec in self._tiles.values() if rec.manifest and actuator in rec.manifest.actuators]
         recent = [r.tile for r in reversed(self._ledger) if r.actuator == actuator and r.tile in owners]
         target = recent[0] if recent else (owners[0] if owners else None)
-        signal = FrictionSignal(kind="repeat", at=at, target_tile=target, count=threshold)
+        signal = FrictionSignal(kind="repeat", at=at, target_tile=target, count=threshold, zone=zone, actor=actor)
         if target:
             await self.deliver_friction(signal)
         return signal

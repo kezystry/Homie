@@ -109,6 +109,29 @@ class CommandLogTests(unittest.TestCase):
         echo = log.take_echo("light.lr", "on")
         self.assertEqual(echo.tile, "tile_b")  # most-recent disambiguates (no HA correlation id)
 
+    def test_canonicalization_matches_equivalent_representations(self) -> None:
+        # Homie drives a structured command; the home echoes a differently-shaped
+        # but equivalent value. With a canonicalizer they must match (else the echo
+        # reads as a human reversal and poisons the friction loop).
+        def canon(v):
+            if isinstance(v, dict):  # {"state": "on", "brightness_pct": 40} -> ("on", 102)
+                pct = v.get("brightness_pct")
+                return (v.get("state"), round(pct * 255 / 100) if pct is not None else None)
+            return v  # the HA echo already arrives as the canonical tuple
+
+        log = CommandLog(canonical=canon)
+        log.record("light.lr", {"state": "on", "brightness_pct": 40}, "lighting")
+        # without canonicalization ("on", 102) != the dict and this would be None
+        echo = log.take_echo("light.lr", ("on", 102))
+        self.assertIsNotNone(echo)
+        self.assertIsNone(log.take_echo("light.lr", ("on", 102)))  # popped, only once
+
+    def test_default_canonical_is_identity(self) -> None:
+        log = CommandLog()  # no canonicalizer -> exact-equality behavior preserved
+        log.record("light.lr", "on", "lighting")
+        self.assertIsNone(log.take_echo("light.lr", "off"))
+        self.assertIsNotNone(log.take_echo("light.lr", "on"))
+
     def test_echo_match_pop_and_window(self) -> None:
         clk = FakeClock()
         log = CommandLog(window=5.0, clock=clk)
@@ -174,11 +197,11 @@ class _SpySupervisor:
         self.reversals: list = []
         self.manuals: list = []
 
-    async def note_reversal(self, actuator, value, at):
+    async def note_reversal(self, actuator, value, at, *, zone=None, actor=None):
         self.reversals.append((actuator, value))
         return None
 
-    async def note_manual(self, actuator, at):
+    async def note_manual(self, actuator, at, *, zone=None, actor=None):
         self.manuals.append((actuator,))
         return None
 

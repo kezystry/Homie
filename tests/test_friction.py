@@ -93,6 +93,29 @@ class FrictionTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(learned(root), ["repeat"])
             await bus.aclose()
 
+    async def test_zone_and_actor_stamped_on_signals(self) -> None:
+        # BACKLOG #9: the runtime stamps where/who a correction came from so
+        # downstream can attribute per-person and apply the privacy exclusions.
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            bus, sup = await self._started(root)
+            rev = await sup.note_reversal("light.x", False, at=120.0, zone="kitchen", actor="alice")
+            self.assertEqual((rev.zone, rev.actor), ("kitchen", "alice"))
+            rem = await sup.note_remark("not now", at=121.0, zone="hallway", actor="bob")
+            self.assertEqual((rem.zone, rem.actor), ("hallway", "bob"))
+            rep = await sup.note_manual("light.x", at=131.0, threshold=1, zone="entry", actor="guest")
+            self.assertEqual((rep.zone, rep.actor), ("entry", "guest"))
+            await bus.aclose()
+
+    async def test_signals_default_unknown_context(self) -> None:
+        # additive + backward compatible: unstamped signals carry None context.
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            bus, sup = await self._started(root)
+            sig = await sup.note_reversal("light.x", False, at=120.0)
+            self.assertEqual((sig.zone, sig.actor), (None, None))
+            await bus.aclose()
+
 
 if __name__ == "__main__":
     unittest.main()

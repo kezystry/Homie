@@ -25,11 +25,17 @@ class StateReconciler:
         entity_to_actuator: dict[str, str],
         *,
         on_echo: Callable[[PendingCommand], Awaitable[None]] | None = None,
+        context: Callable[[str], tuple[str | None, str | None]] | None = None,
     ) -> None:
         self.sup = supervisor
         self.commands = commands
         self.rev = entity_to_actuator
         self.on_echo = on_echo
+        # Optional: resolve (zone, actor) for an entity at the moment of a human
+        # change — e.g. the zone the actuator lives in and who is present (L2
+        # label). Stamped onto the friction signal for per-person learning and the
+        # privacy exclusions. Returns (None, None) when unknown.
+        self.context = context
 
     def attach(self, home: HomeClient) -> None:
         home.on_state_change(self.on_state_change)
@@ -44,6 +50,7 @@ class StateReconciler:
         if actuator is None:  # unmapped / never-touch entity — never our concern
             return
         at = time.time()
-        sig = await self.sup.note_reversal(actuator, value, at)  # reverses a tile's act?
+        zone, actor = self.context(entity_id) if self.context else (None, None)
+        sig = await self.sup.note_reversal(actuator, value, at, zone=zone, actor=actor)  # reverses a tile's act?
         if sig is None:  # no recent Homie act on it — a manual action
-            await self.sup.note_manual(actuator, at)
+            await self.sup.note_manual(actuator, at, zone=zone, actor=actor)
