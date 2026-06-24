@@ -31,7 +31,8 @@ def expectations(r: Remember):
     for topic, zone in (("presence.arrived", "kitchen"), ("motion.detected", "hall")):
         for h in (8, 22):
             e = r.model.expectation(topic, zone, at(h, 20))
-            out[(topic, zone, h)] = (e.count, e.days, round(e.rate, 6), e.novel)
+            # round mass to absorb snapshot's 6-decimal weight rounding
+            out[(topic, zone, h)] = (round(e.count, 5), round(e.days, 5), round(e.rate, 6), e.novel)
     return out
 
 
@@ -48,7 +49,10 @@ class PatternModelSnapshotTests(unittest.TestCase):
         m2.restore(snap)
         a = m.expectation("presence.arrived", "kitchen", at(8, 20))
         b = m2.expectation("presence.arrived", "kitchen", at(8, 20))
-        self.assertEqual((a.count, a.days, a.rate, a.novel), (b.count, b.days, b.rate, b.novel))
+        self.assertAlmostEqual(a.count, b.count, places=5)  # snapshot rounds weights to 6 dp
+        self.assertAlmostEqual(a.days, b.days, places=5)
+        self.assertAlmostEqual(a.rate, b.rate, places=6)
+        self.assertEqual(a.novel, b.novel)
         # None-zone key round-trips
         self.assertFalse(m2.expectation("motion.detected", None, at(22, 20)).novel)
 
@@ -139,8 +143,13 @@ class CompactionTests(unittest.IsolatedAsyncioTestCase):
             booted = Remember()
             booted.bootstrap(Bus(log_path=path))  # no snapshot ⇒ folds uncovered seg.1
             exp = booted.model.expectation("presence.arrived", "kitchen", at(8, 20))
-            self.assertEqual(exp.count, 3)
-            self.assertEqual(exp.days, 3)
+            ref = Remember()  # 3 events folded once, no crash — the no-loss reference
+            for day in (10, 11, 12):
+                ref.model.observe(ev("presence.arrived", at(8, day), "kitchen"))
+            ref_exp = ref.model.expectation("presence.arrived", "kitchen", at(8, 20))
+            self.assertFalse(exp.novel)
+            self.assertAlmostEqual(exp.count, ref_exp.count, places=5)  # evidence intact — nothing lost
+            self.assertAlmostEqual(exp.days, ref_exp.days, places=5)
 
     async def test_crash_before_segment_delete_no_double_count(self) -> None:
         # simulate: snapshot committed (gen 1), but the covered segment wasn't deleted
@@ -162,7 +171,11 @@ class CompactionTests(unittest.IsolatedAsyncioTestCase):
             booted = Remember()
             booted.bootstrap(Bus(log_path=path))  # gen 1 covers seg.1 ⇒ must skip it
             exp = booted.model.expectation("presence.arrived", "kitchen", at(8, 20))
-            self.assertEqual(exp.count, 3)  # not 4 — no double-count
+            ref = Remember()  # 3 events folded once — the no-double-count reference
+            for day in (10, 11, 12):
+                ref.model.observe(ev("presence.arrived", at(8, day), "kitchen"))
+            ref_exp = ref.model.expectation("presence.arrived", "kitchen", at(8, 20))
+            self.assertAlmostEqual(exp.count, ref_exp.count, places=5)  # not doubled
             # and the stale covered segment was GC'd
             self.assertFalse((path.parent / "events.seg.1.jsonl").exists())
 

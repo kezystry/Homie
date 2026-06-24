@@ -29,9 +29,9 @@ class RememberTests(unittest.IsolatedAsyncioTestCase):
             await r.record(ev("presence.arrived", at(2026, 6, d, 8), "kitchen"))
         exp = await r.normal("presence.arrived", "kitchen", at(2026, 6, 13, 8))
         self.assertFalse(exp.novel)
-        self.assertEqual(exp.count, 3)
-        self.assertEqual(exp.days, 3)
-        self.assertAlmostEqual(exp.rate, 1.0)  # ~once/day at this hour
+        self.assertAlmostEqual(exp.rate, 1.0)  # ~once/day at this hour (rate survives decay)
+        self.assertGreater(exp.count, 2.5)  # decayed evidence mass of ~3 daily observations
+        self.assertGreater(exp.days, 2.5)
 
     async def test_novel_key(self) -> None:
         r = Remember()
@@ -54,8 +54,8 @@ class RememberTests(unittest.IsolatedAsyncioTestCase):
         r = Remember()
         await r.record(ev("presence.arrived", at(2026, 6, 10, 8), "kitchen"))
         await r.record(ev("presence.arrived", at(2026, 6, 10, 8), "hallway"))
-        k = await r.normal("presence.arrived", "kitchen", at(2026, 6, 11, 8))
-        h = await r.normal("presence.arrived", "hallway", at(2026, 6, 11, 8))
+        k = await r.normal("presence.arrived", "kitchen", at(2026, 6, 10, 8))
+        h = await r.normal("presence.arrived", "hallway", at(2026, 6, 10, 8))
         self.assertEqual(k.count, 1)
         self.assertEqual(h.count, 1)
 
@@ -63,7 +63,7 @@ class RememberTests(unittest.IsolatedAsyncioTestCase):
         r = Remember()
         for _ in range(4):  # four events, same day same hour
             await r.record(ev("presence.arrived", at(2026, 6, 10, 8), "kitchen"))
-        exp = await r.normal("presence.arrived", "kitchen", at(2026, 6, 11, 8))
+        exp = await r.normal("presence.arrived", "kitchen", at(2026, 6, 10, 8))
         self.assertEqual(exp.count, 4)
         self.assertEqual(exp.days, 1)
         self.assertAlmostEqual(exp.rate, 4.0)
@@ -79,8 +79,8 @@ class RememberTests(unittest.IsolatedAsyncioTestCase):
             r = Remember()
             r.bootstrap(Bus(log_path=path))  # the log is the memory
             exp = await r.normal("presence.arrived", "kitchen", at(2026, 6, 13, 8))
-            self.assertEqual(exp.count, 3)
-            self.assertEqual(exp.days, 3)
+            self.assertAlmostEqual(exp.rate, 1.0)
+            self.assertGreater(exp.count, 2.5)  # decayed evidence of 3 daily observations
 
     async def test_attach_records_live(self) -> None:
         bus = Bus()
@@ -88,7 +88,7 @@ class RememberTests(unittest.IsolatedAsyncioTestCase):
         r.attach(bus)
         await bus.publish(ev("motion.detected", at(2026, 6, 10, 22), "living"))
         await bus.drain()
-        exp = await r.normal("motion.detected", "living", at(2026, 6, 11, 22))
+        exp = await r.normal("motion.detected", "living", at(2026, 6, 10, 22))
         self.assertEqual(exp.count, 1)
         await bus.aclose()
 

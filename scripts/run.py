@@ -11,6 +11,7 @@ import asyncio
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,6 +38,7 @@ async def _housekeep(bus: Bus, remember: Remember) -> None:
     while True:
         await asyncio.sleep(COMPACT_INTERVAL)
         try:
+            remember.decay(time.time())  # age + prune the pattern of life, then consolidate
             await bus.maybe_compact(remember.snapshot)
         except Exception:
             log.exception("housekeep: compaction cycle failed; will retry")

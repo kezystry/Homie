@@ -4,28 +4,42 @@ Builds a pattern of life from the event stream and answers "what is normal?" for
 a given topic, zone, and time. It reads the same append-only log the bus writes
 (bootstrap on start) and updates live by subscribing — one log, two readers.
 
-The model is deliberately simple: per (topic, zone) it counts observations into
-hour-of-day buckets and tracks how many distinct days it has seen, so an
-expectation is a per-day rate. Novel keys (never observed) are flagged. Security
-and Self-Learning consume this; thresholds/policy live in the caller, not here.
+The model is an exponentially-decayed estimate: per (topic, zone) it holds a
+decayed event mass per hour-of-day bucket and a decayed distinct-day mass, so an
+expectation reads as ~events/day at that hour over a rolling ~30-day window. Old
+behaviour fades (the household changes); never/no-longer-seen keys are `novel`.
+Decay is memoryless (lazy on write/read to an injected timestamp — never the wall
+clock), so replaying the same log is bit-identical. Security and Self-Learning
+consume this; thresholds/policy live in the caller.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import date, datetime
+import logging
+import math
+from dataclasses import dataclass
+from datetime import datetime
 
 from core.bus import _compile
 from core.tile import Event
 
+log = logging.getLogger("homie.remember")
+
 HOURS = 24
+HALF_LIFE_DAYS = 30.0
+DAY_SECONDS = 86400.0
+LAMBDA = math.log(2) / (HALF_LIFE_DAYS * DAY_SECONDS)  # per-second decay rate
+EPS = 1e-3  # prune threshold on decayed day-mass
+SNAPSHOT_VERSION = 2
+
+Key = tuple[str, str | None]
 
 
 @dataclass(frozen=True)
 class Expectation:
-    rate: float  # observed events/day in this (key, hour) bucket
-    count: int  # raw observations in the bucket
-    days: int  # distinct days of history for the key
-    novel: bool  # the (topic, zone) was never observed before
+    rate: float  # ~events/day at this (key, hour) over the decay window
+    count: float  # decayed event mass in the bucket (evidence, not a raw count)
+    days: float  # decayed effective days of evidence for the key
+    novel: bool  # the (topic, zone) was never observed (or has fully decayed away)
 
 
 def _zone(event: Event) -> str | None:
@@ -33,49 +47,120 @@ def _zone(event: Event) -> str | None:
 
 
 class PatternModel:
+    """Per-(topic, zone): a 24-hour decayed weight vector + a decayed day-mass.
+    `last_update` is one timestamp per key — decay is memoryless, so ageing the
+    whole vector to a common time equals per-bucket bookkeeping at 1/24 the cost."""
+
     def __init__(self) -> None:
-        self._counts: dict[tuple[str, str | None], list[int]] = {}
-        self._dates: dict[tuple[str, str | None], set[date]] = {}
+        self._w: dict[Key, list[float]] = {}  # decayed event mass per hour
+        self._days: dict[Key, float] = {}  # decayed distinct-day mass (denominator)
+        self._last: dict[Key, float] = {}  # last update, epoch seconds
+        self._lastd: dict[Key, str] = {}  # ISO date of last observation (distinct-day gate)
+
+    @staticmethod
+    def _factor(dt: float) -> float:
+        return math.exp(-LAMBDA * max(0.0, dt))  # clamp: a replayed clock never grows mass
 
     def observe(self, event: Event) -> None:
         key = (event.topic, _zone(event))
-        when = datetime.fromtimestamp(event.ts)  # local time — patterns are local
-        self._counts.setdefault(key, [0] * HOURS)[when.hour] += 1
-        self._dates.setdefault(key, set()).add(when.date())
+        t = event.ts
+        w = self._w.setdefault(key, [0.0] * HOURS)
+        d = self._factor(t - self._last.get(key, t))  # decay existing mass to event time
+        for j in range(HOURS):
+            w[j] *= d
+        self._days[key] = self._days.get(key, 0.0) * d
+        when = datetime.fromtimestamp(t)
+        today = when.date().isoformat()
+        if self._lastd.get(key) != today:  # denominator counts distinct days
+            self._days[key] += 1.0
+            self._lastd[key] = today
+        w[when.hour] += 1.0  # numerator counts every event
+        self._last[key] = max(self._last.get(key, t), t)  # never move the clock backward
 
     def expectation(self, topic: str, zone: str | None, when: float) -> Expectation:
         key = (topic, zone)
-        if key not in self._counts:
-            return Expectation(rate=0.0, count=0, days=0, novel=True)
-        hour = datetime.fromtimestamp(when).hour
-        count = self._counts[key][hour]
-        days = len(self._dates[key]) or 1
-        return Expectation(rate=count / days, count=count, days=days, novel=False)
+        if key not in self._w:
+            return Expectation(rate=0.0, count=0.0, days=0.0, novel=True)
+        d = self._factor(when - self._last[key])  # decay a scratch copy; no mutation
+        count = self._w[key][datetime.fromtimestamp(when).hour] * d
+        days = self._days[key] * d
+        rate = count / days if days > 0.0 else 0.0  # d cancels: a stopped pattern's rate holds
+        return Expectation(rate=rate, count=count, days=days, novel=False)
+
+    def decay(self, now: float) -> None:
+        """Realize decay on every key to `now` and prune those that have faded
+        away (→ novel again). Idempotent at a fixed `now`. Called nightly."""
+        for key in list(self._w):
+            d = self._factor(now - self._last[key])
+            w = self._w[key]
+            for j in range(HOURS):
+                w[j] = w[j] * d if w[j] * d >= EPS else 0.0
+            self._days[key] *= d
+            self._last[key] = now
+            if self._days[key] < EPS:
+                for store in (self._w, self._days, self._last, self._lastd):
+                    store.pop(key, None)
 
     def snapshot(self) -> dict:
-        """Serialize the whole model to a JSON-safe dict (small: per-key 24 ints
-        + observed dates). The inverse of restore()."""
+        """Serialize to a JSON-safe v2 dict. Pure read — never decays or mutates."""
         keys = []
-        for key, counts in self._counts.items():
+        for key, w in self._w.items():
             topic, zone = key
             keys.append(
                 {
                     "topic": topic,
                     "zone": zone,
-                    "counts": list(counts),
-                    "dates": sorted(d.isoformat() for d in self._dates.get(key, set())),
+                    "weights": [round(x, 6) for x in w],
+                    "days_mass": round(self._days[key], 6),
+                    "last_update": self._last[key],
+                    "last_obs_date": self._lastd.get(key),
                 }
             )
-        return {"version": 1, "hours": HOURS, "keys": keys}
+        return {"version": SNAPSHOT_VERSION, "hours": HOURS, "half_life_days": HALF_LIFE_DAYS, "keys": keys}
 
     def restore(self, snap: dict) -> None:
+        version = snap.get("version", 1)
+        if version == 1:
+            self._restore_v1(snap)
+        elif version == SNAPSHOT_VERSION:
+            self._restore_v2(snap)
+        else:  # future format on an older binary — caller falls back to log replay
+            raise ValueError(f"unknown snapshot version {version}")
+
+    def _restore_v2(self, snap: dict) -> None:
         for k in snap.get("keys", []):
+            weights = [float(x) for x in k["weights"]]
+            days = float(k["days_mass"])
+            last = float(k["last_update"])
+            if not (all(map(math.isfinite, weights)) and math.isfinite(days) and math.isfinite(last)):
+                log.warning("remember: skipping non-finite snapshot key %r", k.get("topic"))
+                continue
             key = (k["topic"], k["zone"])
-            self._counts[key] = list(k["counts"])
-            self._dates[key] = {date.fromisoformat(s) for s in k["dates"]}
+            self._w[key] = weights
+            self._days[key] = days
+            self._last[key] = last
+            self._lastd[key] = k.get("last_obs_date")
+
+    def _restore_v1(self, snap: dict) -> None:
+        """Migrate the old {counts:[24 ints], dates:[iso...]} shape forward,
+        rate-preserving: stamp last_update at the LAST observed date (not now), so
+        the first decay() ages stale routines instead of treating them as fresh."""
+        for k in snap.get("keys", []):
+            dates = k.get("dates", [])
+            if not dates:
+                continue
+            key = (k["topic"], k["zone"])
+            last_date = max(dates)
+            self._w[key] = [float(c) for c in k["counts"]]
+            self._days[key] = float(len(dates))  # old cardinality is the undecayed denominator
+            self._last[key] = datetime.fromisoformat(last_date).timestamp()
+            self._lastd[key] = last_date
 
 
 class Remember:
+    #: perception topics the pattern of life is built from (not internal chatter)
+    PERCEPTION = ("presence.**", "motion.**", "occupancy.**")
+
     def __init__(self) -> None:
         self.model = PatternModel()
 
@@ -85,6 +170,10 @@ class Remember:
     async def normal(self, topic: str, zone: str | None, when: float) -> Expectation:
         """What is expected for this topic/zone at this time."""
         return self.model.expectation(topic, zone, when)
+
+    def decay(self, now: float) -> None:
+        """Age + prune the pattern of life (the nightly consolidation calls this)."""
+        self.model.decay(now)
 
     def snapshot(self) -> dict:
         """The current pattern of life, for the bus to persist during compaction."""
@@ -98,28 +187,27 @@ class Remember:
 
         Loads the compaction snapshot (if any), then folds the events not yet
         covered by it (uncovered segments + the live tail). Only perception events
-        feed the pattern of life, matching attach(), so internal chatter is ignored.
-        With no snapshot this degrades to a full replay (backward compatible).
+        feed the pattern of life, matching attach(). A snapshot we can't read (an
+        unknown/future version) is skipped — we fall back to folding what's logged.
         """
         snap = bus.load_snapshot()
         if snap is not None:
-            self.model.restore(snap)
+            try:
+                self.model.restore(snap)
+            except Exception:
+                log.warning("remember: unreadable snapshot; rebuilding from the log")
         patterns = [_compile(p) for p in self.PERCEPTION]
         for event in bus.pending_events():
             if any(p.match(event.topic) for p in patterns):
                 self.model.observe(event)
 
-    #: perception topics the pattern of life is built from (not internal chatter)
-    PERCEPTION = ("presence.**", "motion.**", "occupancy.**")
-
     def attach(self, bus) -> None:
         """Record perception events live, on top of the bootstrap history.
 
-        Note the ordering contract: anomaly evaluation (Security/Reason) must judge
-        an event against *prior* history. A consumer that both evaluates and learns
-        from the same event must evaluate first, then commit — otherwise the event
-        masks its own novelty. Remember therefore lags evaluation by design; live
-        learning here is for consumers that are not evaluating the same instant.
+        Ordering contract: anomaly evaluation (Security/Reason) must judge an event
+        against *prior* history. A consumer that both evaluates and learns from the
+        same event must evaluate first, then commit — else the event masks its own
+        novelty. Remember therefore lags evaluation by design.
         """
         for topic in self.PERCEPTION:
             bus.subscribe(topic, self.record, owner="core:remember")
