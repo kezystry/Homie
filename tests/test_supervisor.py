@@ -17,8 +17,19 @@ from core.tile import (
     Supervisor,
     SupervisionPolicy,
     TileContext,
+    TileState,
     load_manifest,
 )
+
+
+class TileStateTests(unittest.IsolatedAsyncioTestCase):
+    async def test_atomic_put_persists_and_leaves_no_tmp(self) -> None:
+        with TemporaryDirectory() as d:
+            s = TileState(Path(d) / "state")
+            await s.put("seen", ["a", "b"])
+            again = TileState(Path(d) / "state")  # fresh read
+            self.assertEqual(again.get("seen"), ["a", "b"])
+            self.assertFalse((Path(d) / "state" / "data.json.tmp").exists())  # no stray temp
 
 
 def rich_toml(name: str, function_blocks: str) -> str:
@@ -118,26 +129,55 @@ class ManifestTests(unittest.TestCase):
         add_reminder = next(s for s in m.function_specs if s.name == "add_reminder")
         self.assertEqual(add_reminder.params[0].name, "text")
 
+    def test_priority_default_and_override(self) -> None:
+        toml = (
+            '[tile]\nname = "p"\nsummary = "s"\n[subscribes]\nevents = []\n'
+            "[provides]\nintents = []\nfunctions = []\n"
+            '[acts]\nactuators = ["light.a", "lock.b"]\npriority = "convenience"\n'
+            '[acts.priorities]\n"lock.b" = "safety"\n'
+            '[permissions]\nreads = []\nnetwork = "local"\n'
+        )
+        with TemporaryDirectory() as d:
+            make_tile(Path(d), "p", toml=toml, handlers="")
+            m = load_manifest(Path(d) / "p" / "tile.toml")
+            self.assertIsInstance(m, Manifest)
+            self.assertEqual(m.default_priority, "convenience")
+            self.assertEqual(m.priority_for("light.a"), "convenience")  # default
+            self.assertEqual(m.priority_for("lock.b"), "safety")  # per-actuator override
+
+    def test_invalid_priority_rejected(self) -> None:
+        toml = (
+            '[tile]\nname = "p"\nsummary = "s"\n[subscribes]\nevents = []\n'
+            "[provides]\nintents = []\nfunctions = []\n"
+            '[acts]\nactuators = ["light.a"]\npriority = "urgent"\n'  # not a Priority level
+            '[permissions]\nreads = []\nnetwork = "local"\n'
+        )
+        with TemporaryDirectory() as d:
+            make_tile(Path(d), "p", toml=toml, handlers="")
+            m = load_manifest(Path(d) / "p" / "tile.toml")
+            self.assertIsInstance(m, InvalidManifest)
+            self.assertTrue(any("priority" in e for e in m.errors))
+
 
 class PermissionTests(unittest.IsolatedAsyncioTestCase):
     async def test_act_permission(self) -> None:
         acted = []
 
-        async def act(actuator, value):
-            acted.append((actuator, value))
+        async def act(actuator, value, priority="automation"):
+            acted.append((actuator, value, priority))
 
         async def noop(*a):
             return None
 
         ctx = TileContext(
-            Manifest("t", "s", actuators=("light.x",)),
+            Manifest("t", "s", actuators=("light.x",), default_priority="security"),
             emit=noop,
             act=act,
             speak=noop,
             log_fn=lambda *a: None,
         )
         await ctx.act("light.x", True)
-        self.assertEqual(acted, [("light.x", True)])
+        self.assertEqual(acted, [("light.x", True, "security")])  # priority resolved from manifest
         with self.assertRaises(PermissionError):
             await ctx.act("light.y", True)
 

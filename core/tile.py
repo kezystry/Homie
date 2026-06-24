@@ -35,6 +35,9 @@ log = logging.getLogger("homie.tile")
 # Contract types
 # --------------------------------------------------------------------------- #
 PARAM_TYPES = frozenset({"string", "number", "integer", "boolean", "array", "object"})
+# Bus Priority level names (lowercase). Kept here to avoid a tile->bus import cycle;
+# core/act.py maps these strings to the bus Priority enum.
+PRIORITY_LEVELS = frozenset({"ambient", "convenience", "automation", "security", "safety"})
 
 
 @dataclass(frozen=True)
@@ -67,6 +70,8 @@ class Manifest:
     actuators: tuple[str, ...] = ()  # what it may drive
     reads: tuple[str, ...] = ()  # data domains it may read
     network: str = "local"  # "local" | "egress:<host>"
+    default_priority: str = "automation"  # bus Priority level for this tile's acts
+    act_priorities: tuple[tuple[str, str], ...] = ()  # per-actuator overrides (actuator, level)
     path: Path | None = None  # tiles/<name>/, set by the loader
 
     @property
@@ -74,6 +79,14 @@ class Manifest:
         """A tile runs out-of-process when it can reach the network or is
         otherwise declared unsafe — so `local`-only can be truly enforced."""
         return self.network != "local"
+
+    def priority_for(self, actuator: str) -> str:
+        """The bus Priority level (lowercase name) for an act on this actuator —
+        a per-actuator override if declared, else the tile default."""
+        for act, level in self.act_priorities:
+            if act == actuator:
+                return level
+        return self.default_priority
 
 
 @dataclass(frozen=True)
@@ -168,7 +181,9 @@ class TileState:
 
     async def put(self, key: str, value) -> None:
         self._data[key] = value
-        self._data_file.write_text(json.dumps(self._data), "utf-8")
+        tmp = self._data_file.with_suffix(".tmp")  # atomic write: a crash can't corrupt data.json
+        tmp.write_text(json.dumps(self._data), "utf-8")
+        os.replace(tmp, self._data_file)
 
     def config(self) -> dict:
         f = self.path / "config.toml"
@@ -195,7 +210,7 @@ class TileContext:
         if actuator not in self.manifest.actuators:
             self._log("warning", f"{self.manifest.name}: act on undeclared '{actuator}' refused")
             raise PermissionError(actuator)
-        await self._act(actuator, value)
+        await self._act(actuator, value, self.manifest.priority_for(actuator))
 
     async def emit(self, event: Event) -> None:
         await self._emit(event)
@@ -249,11 +264,17 @@ def load_manifest(toml_path: Path) -> Manifest | InvalidManifest:
     errors: list[str] = []
     function_specs = _parse_functions(raw.get("provides", {}).get("functions", []), errors)
     functions = tuple(s.name for s in function_specs)
-    actuators = tuple(raw.get("acts", {}).get("actuators", []))
+    acts = raw.get("acts", {})
+    actuators = tuple(acts.get("actuators", []))
+    default_priority = acts.get("priority", "automation")
+    act_priorities = tuple((a, lvl) for a, lvl in acts.get("priorities", {}).items())
     perms = raw.get("permissions", {})
     reads = tuple(perms.get("reads", []))
     network = perms.get("network", "local")
 
+    for lvl in (default_priority, *(lvl for _, lvl in act_priorities)):
+        if lvl not in PRIORITY_LEVELS:
+            errors.append(f"invalid priority level '{lvl}'")
     if not _NAME.match(name):
         errors.append(f"invalid name '{name}'")
     elif name != folder_name:
@@ -282,6 +303,8 @@ def load_manifest(toml_path: Path) -> Manifest | InvalidManifest:
         actuators=actuators,
         reads=reads,
         network=network,
+        default_priority=default_priority,
+        act_priorities=act_priorities,
         path=folder,
     )
 
@@ -517,6 +540,7 @@ class SupervisionPolicy:
     quarantine_after: int = 5  # faults...
     quarantine_window: float = 600.0  # ...within this many seconds
     reversal_window: float = 600.0  # how long an act stays attributable to a correction
+    manual_window: float = 86400.0  # window for counting repeated manual actions (a day)
 
 
 @dataclass
@@ -545,7 +569,7 @@ class Supervisor:
         self.consent = consent  # confirmation gate, exposed to tiles via ctx.confirm
         self._tiles: dict[str, TileRecord] = {}
         self._ledger: list[ActionRef] = []  # recent acts, for friction attribution
-        self._manual: dict[str, int] = {}  # manual-action counts, for repeat detection
+        self._manual: dict[str, list[float]] = {}  # windowed manual-action times, for repeat detection
 
     # discovery — manifests only, no tile code
     def discover(self) -> list[Manifest | InvalidManifest]:
@@ -688,12 +712,21 @@ class Supervisor:
         return signal
 
     async def note_manual(self, actuator: str, at: float, *, threshold: int = 3) -> FrictionSignal | None:
-        """A human keeps doing something by hand. After `threshold` repeats,
-        nudge the tile that owns that actuator to learn to offer it."""
-        self._manual[actuator] = self._manual.get(actuator, 0) + 1
-        if self._manual[actuator] < threshold:
+        """A human keeps doing something by hand. After `threshold` repeats within
+        the window, nudge the tile that owns that actuator to learn to offer it."""
+        window = self.policy.manual_window
+        # prune aged keys (no unbounded growth) and stale timestamps
+        self._manual = {
+            a: [t for t in ts if at - t <= window]
+            for a, ts in self._manual.items()
+            if a == actuator or any(at - t <= window for t in ts)
+        }
+        times = self._manual.get(actuator, [])
+        times.append(at)
+        self._manual[actuator] = times
+        if len(times) < threshold:
             return None
-        self._manual[actuator] = 0
+        self._manual[actuator] = []  # reset after firing
         target = next(
             (rec.name for rec in self._tiles.values() if rec.manifest and actuator in rec.manifest.actuators),
             None,
@@ -730,13 +763,15 @@ class Supervisor:
         async def emit(event: Event) -> None:
             await self.bus.publish(event)
 
-        async def act(actuator: str, value) -> None:
+        async def act(actuator: str, value, priority: str = "automation") -> None:
             ref = ActionRef(uuid4().hex, name, actuator, value, time.time())
             self._ledger.append(ref)
             cutoff = ref.at - self.policy.reversal_window
             self._ledger = [r for r in self._ledger if r.at >= cutoff]  # bounded by window
             await self.bus.publish(
-                Event("actuator.requested", ref.at, {"actuator": actuator, "value": value, "tile": name}, source=f"tile:{name}")
+                Event("actuator.requested", ref.at,
+                      {"actuator": actuator, "value": value, "tile": name, "priority": priority},
+                      source=f"tile:{name}")
             )
 
         async def speak(text: str) -> None:

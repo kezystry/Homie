@@ -20,11 +20,21 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Awaitable, Callable, Protocol
 
+from core.bus import Priority, Request
 from core.tile import Event
 
 log = logging.getLogger("homie.act")
 
 StateHandler = Callable[[str, object], Awaitable[None]]  # (entity_id, value)
+
+# Map manifest priority level names -> the bus Priority enum (the safety floor).
+_PRIORITY = {
+    "ambient": Priority.AMBIENT,
+    "convenience": Priority.CONVENIENCE,
+    "automation": Priority.AUTOMATION,
+    "security": Priority.SECURITY,
+    "safety": Priority.SAFETY,
+}
 
 
 class HomeClient(Protocol):
@@ -104,11 +114,13 @@ class CommandLog:
 # Act
 # --------------------------------------------------------------------------- #
 class Act:
-    def __init__(self, bus, home: HomeClient, commands: CommandLog, act_map: ActMap) -> None:
+    def __init__(self, bus, home: HomeClient, commands: CommandLog, act_map: ActMap, *, hold_window: float = 5.0) -> None:
         self.bus = bus
         self.home = home
         self.commands = commands
         self.map = act_map
+        self.hold_window = hold_window  # how long a winning request "holds" its actuator
+        self._holds: dict[str, Request] = {}  # last winner per actuator (for arbitration)
         self._sub = None
 
     async def start(self) -> None:
@@ -123,6 +135,20 @@ class Act:
         actuator = event.payload.get("actuator")
         value = event.payload.get("value")
         tile = event.payload.get("tile")
+        level = event.payload.get("priority", "automation")
+        req = Request(actuator, value, _PRIORITY.get(level, Priority.AUTOMATION), tile, event.ts)
+
+        # Arbitration (the bus is the referee): a fresh higher-priority decision
+        # "holds" the actuator and suppresses a lower-priority request arriving
+        # within the window. Ties go to recency. The hold makes priority real.
+        hold = self._holds.get(actuator)
+        if hold is not None and (req.at - hold.at) <= self.hold_window:
+            winner = await self.bus.arbitrate(actuator, [hold, req])
+            if winner is hold:
+                log.info("act: '%s' (%s) suppressed by higher-priority hold (%s)", actuator, level, hold.priority.name)
+                return
+        self._holds[actuator] = req
+
         entity = self.map.entity_for(actuator)
         if entity is None:
             log.warning("act: '%s' is unmapped (or never-touch) — refused", actuator)

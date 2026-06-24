@@ -247,5 +247,53 @@ class FrictionLoopEndToEnd(unittest.IsolatedAsyncioTestCase):
             await bus.aclose()
 
 
+class ArbitrationTests(unittest.IsolatedAsyncioTestCase):
+    """Act wires the bus as the safety referee: priority + recency decide conflicts."""
+
+    async def _act(self):
+        bus, home = Bus(), FakeHomeClient()
+        act = Act(bus, home, CommandLog(), MAP, hold_window=5.0)
+        await act.start()
+        return bus, home, act
+
+    def _req(self, actuator, value, priority, ts):
+        return Event("actuator.requested", ts, {"actuator": actuator, "value": value, "tile": "t", "priority": priority})
+
+    async def test_higher_priority_holds_suppresses_lower(self) -> None:
+        bus, home, act = await self._act()
+        await bus.publish(self._req("light.living_room", "on", "security", 1.0))
+        await bus.publish(self._req("light.living_room", "off", "convenience", 1.5))  # within window, lower
+        await bus.drain()
+        self.assertEqual(home.driven, [("light.lr", "on")])  # the loser was not driven
+        await act.stop()
+        await bus.aclose()
+
+    async def test_recency_breaks_ties(self) -> None:
+        bus, home, act = await self._act()
+        await bus.publish(self._req("light.living_room", "on", "automation", 1.0))
+        await bus.publish(self._req("light.living_room", "off", "automation", 2.0))  # equal priority, newer
+        await bus.drain()
+        self.assertEqual(home.driven[-1], ("light.lr", "off"))  # newer wins the tie
+        await act.stop()
+        await bus.aclose()
+
+    async def test_distinct_actuators_independent(self) -> None:
+        bus, home, act = await self._act()
+        await bus.publish(self._req("light.living_room", "on", "convenience", 1.0))
+        await bus.publish(self._req("light.kitchen", "on", "convenience", 1.0))
+        await bus.drain()
+        self.assertEqual(set(home.driven), {("light.lr", "on"), ("light.kit", "on")})
+        await act.stop()
+        await bus.aclose()
+
+    async def test_missing_priority_defaults(self) -> None:
+        bus, home, act = await self._act()
+        await bus.publish(Event("actuator.requested", 1.0, {"actuator": "light.kitchen", "value": "on", "tile": "t"}))
+        await bus.drain()
+        self.assertEqual(home.driven, [("light.kit", "on")])
+        await act.stop()
+        await bus.aclose()
+
+
 if __name__ == "__main__":
     unittest.main()

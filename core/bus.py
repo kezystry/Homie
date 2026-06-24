@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import re
 from dataclasses import asdict, dataclass, field
@@ -24,6 +25,8 @@ from pathlib import Path
 from typing import Awaitable, Callable, Iterator
 
 from core.tile import Event
+
+log = logging.getLogger("homie.bus")
 
 Handler = Callable[[Event], Awaitable[None]]
 
@@ -74,6 +77,8 @@ class Subscription:
     task: asyncio.Task | None = None
     dropped: int = 0  # backpressure counter
     faults: int = 0  # fault-isolation counter
+    inflight: int = 0  # enqueued-but-not-yet-handled (drives drain(), no private attrs)
+    respawns: int = 0  # drain-task respawns (supervision)
 
 
 # --------------------------------------------------------------------------- #
@@ -233,6 +238,7 @@ class Bus:
         self._log = DurabilityLog(log_path, flush_every=flush_every)
         self._compact_threshold = compact_threshold  # 0 = never auto-compact
         self._appends_since_compact = 0
+        self._max_respawns = 5  # drain-task respawn cap before tearing the sub down
 
     async def publish(self, event: Event) -> None:
         """Log, then fan out to matching subscribers. Returns once enqueued;
@@ -244,10 +250,12 @@ class Bus:
                 continue
             try:
                 sub.queue.put_nowait(event)
+                sub.inflight += 1
             except asyncio.QueueFull:
                 _ = sub.queue.get_nowait()  # drop-oldest, keep newest
-                sub.queue.task_done()  # keep unfinished-count consistent for drain()/join()
+                sub.inflight -= 1  # the dropped item will never be handled
                 sub.queue.put_nowait(event)
+                sub.inflight += 1
                 sub.dropped += 1
 
     def subscribe(self, pattern: str, handler: Handler, *, owner: str | None = None) -> Subscription:
@@ -260,8 +268,24 @@ class Bus:
             queue=asyncio.Queue(maxsize=self._maxsize),
         )
         sub.task = asyncio.ensure_future(self._drain(sub))
+        sub.task.add_done_callback(lambda t, s=sub: self._on_drain_done(s, t))
         self._subs.append(sub)
         return sub
+
+    def _on_drain_done(self, sub: Subscription, task: asyncio.Task) -> None:
+        """A drain task should run forever. If it exits abnormally, respawn it
+        (capped) so a dead consumer never silently swallows a tile's events."""
+        if task.cancelled() or sub not in self._subs:
+            return  # intentional teardown (unsubscribe / drop_owner)
+        exc = task.exception()
+        sub.respawns += 1
+        log.error("bus: drain task for %r exited (%r); respawn %d", sub.owner or sub.pattern, exc, sub.respawns)
+        if sub.respawns > self._max_respawns:
+            log.error("bus: drain task for %r exceeded respawn cap — tearing down", sub.owner or sub.pattern)
+            self.unsubscribe(sub)
+            return
+        sub.task = asyncio.ensure_future(self._drain(sub))
+        sub.task.add_done_callback(lambda t, s=sub: self._on_drain_done(s, t))
 
     def unsubscribe(self, sub: Subscription) -> None:
         if sub.task:
@@ -315,16 +339,14 @@ class Bus:
             except Exception:
                 sub.faults += 1  # contain the failure; never reach publish/siblings
             finally:
-                sub.queue.task_done()
+                sub.inflight -= 1
 
     async def drain(self) -> None:
-        """Quiescence helper: return once every enqueued event has been handled.
-        Loops to a fixed point in case handlers publish further events."""
-        while True:
-            pending = [s for s in self._subs if s.queue._unfinished_tasks]  # type: ignore[attr-defined]
-            if not pending:
-                return
-            await asyncio.gather(*(s.queue.join() for s in pending))
+        """Quiescence helper: return once every enqueued event has been handled,
+        to a fixed point (handlers may publish more, or park on each other). Uses
+        the explicit inflight counter — no private Queue internals."""
+        while any(s.inflight for s in self._subs):
+            await asyncio.sleep(0)
 
     async def aclose(self) -> None:
         for sub in list(self._subs):

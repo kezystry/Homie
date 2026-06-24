@@ -43,8 +43,8 @@ def _make_ctx(manifest) -> TileContext:
     async def emit(event: Event) -> None:
         _write({"type": "emit", "event": asdict(event)})
 
-    async def act(actuator: str, value) -> None:
-        _write({"type": "act", "actuator": actuator, "value": value})
+    async def act(actuator: str, value, priority: str = "automation") -> None:
+        _write({"type": "act", "actuator": actuator, "value": value, "priority": priority})
 
     async def speak(text: str) -> None:
         _write({"type": "speak", "text": text})

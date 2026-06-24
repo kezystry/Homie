@@ -8,12 +8,15 @@ mesh transport attach to the same bus as they come online.
     HOMIE_STATE=./.state python3 scripts/run.py
 """
 import asyncio
+import logging
 import os
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+
+log = logging.getLogger("homie.run")
 
 from core.bus import Bus  # noqa: E402
 from core.consent import Consent  # noqa: E402
@@ -29,10 +32,24 @@ COMPACT_INTERVAL = float(os.environ.get("HOMIE_COMPACT_INTERVAL", "3600"))
 
 async def _housekeep(bus: Bus, remember: Remember) -> None:
     """Periodically bound the durability log so it can't grow unbounded or wear
-    the SD card. maybe_compact() no-ops until the append threshold is crossed."""
+    the SD card. maybe_compact() no-ops until the append threshold is crossed.
+    One bad cycle must never kill the loop (or compaction silently stops)."""
     while True:
         await asyncio.sleep(COMPACT_INTERVAL)
-        await bus.maybe_compact(remember.snapshot)
+        try:
+            await bus.maybe_compact(remember.snapshot)
+        except Exception:
+            log.exception("housekeep: compaction cycle failed; will retry")
+
+
+def _supervise(task: asyncio.Task, restart) -> None:
+    """Keep a long-lived background task alive: log and respawn on abnormal exit."""
+    def _done(t: asyncio.Task) -> None:
+        if t.cancelled():
+            return
+        log.error("background task exited (%r); restarting", t.exception())
+        restart()
+    task.add_done_callback(_done)
 
 
 async def main() -> None:
@@ -46,7 +63,11 @@ async def main() -> None:
     sup = Supervisor(ROOT / "tiles", bus, remember=remember, consent=consent)
     await sup.start_all()
     print(f"homie: up with tiles {sup.status()}", flush=True)
-    asyncio.ensure_future(_housekeep(bus, remember))
+
+    def _spawn_housekeep() -> None:
+        _supervise(asyncio.ensure_future(_housekeep(bus, remember)), _spawn_housekeep)
+
+    _spawn_housekeep()  # held alive + respawned on abnormal exit
     await asyncio.Event().wait()  # run until the service stops us
 
 

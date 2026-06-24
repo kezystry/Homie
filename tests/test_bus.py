@@ -147,5 +147,59 @@ def _collect(sink: list):
     return handler
 
 
+class DrainSupervisionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_dead_drain_task_respawns(self) -> None:
+        bus = Bus()
+        sub = bus.subscribe("x.*", _collect([]))
+        original = sub.task
+
+        async def boom():
+            raise RuntimeError("drain died")
+
+        dead = asyncio.ensure_future(boom())
+        await asyncio.sleep(0)  # let it fail
+        bus._on_drain_done(sub, dead)  # simulate abnormal drain exit
+        self.assertEqual(sub.respawns, 1)
+        self.assertIsNot(sub.task, original)  # respawned with a fresh task
+        self.assertIn(sub, bus._subs)
+        await bus.aclose()
+
+    async def test_respawn_cap_tears_down(self) -> None:
+        bus = Bus(maxsize=4)
+        bus._max_respawns = 2
+        sub = bus.subscribe("x.*", _collect([]))
+
+        async def boom():
+            raise RuntimeError("drain died")
+
+        dead = asyncio.ensure_future(boom())
+        await asyncio.sleep(0)
+        for _ in range(3):  # exceed the cap
+            bus._on_drain_done(sub, dead)
+        self.assertNotIn(sub, bus._subs)  # torn down + surfaced rather than looping forever
+        await bus.aclose()
+
+    async def test_drain_waits_for_handler(self) -> None:
+        bus = Bus()
+        gate = asyncio.Event()
+        seen = []
+
+        async def slow(e):
+            await gate.wait()
+            seen.append(e)
+
+        bus.subscribe("x.*", slow)
+        await bus.publish(ev("x.1"))
+
+        async def release():
+            await asyncio.sleep(0)
+            gate.set()
+
+        asyncio.ensure_future(release())
+        await bus.drain()  # must not return until the gated handler finished
+        self.assertEqual(len(seen), 1)
+        await bus.aclose()
+
+
 if __name__ == "__main__":
     unittest.main()
