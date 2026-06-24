@@ -65,10 +65,15 @@ headless rescue path.
 
 ## Bug / fix / upgrade backlog (prioritized)
 
-From an adversarial code audit (83 tests pass; architecture sound). Severity × principle.
+From an adversarial code audit. Severity × principle. **Status as of the last
+session: #1, #2, #3, #5, #7, #8, #10, #11, #12 are DONE (105 tests). Remaining
+software items: #4, #6, #9, #13. Everything else left is hardware/OS/dep-gated
+(the main-PC phase): the Noise transport, real MQTT/Frigate clients, Reason.decide
+wiring, the nightly-ritual systemd units, and OS validation.**
 
-### High
-1. **Arbitration is dead code [self-autonomous/safety].** `Bus.arbitrate` is never
+### High — DONE
+1. ~~**Arbitration is dead code [self-autonomous/safety].**~~ DONE: priority in the
+   manifest → actuator.requested → Act arbitrates via bus.arbitrate (priority hold). `Bus.arbitrate` is never
    called — `Act._on_request` drives every `actuator.requested` directly, and the payload
    (`Supervisor._make_ctx.act`) carries **no priority**. Two tiles racing one actuator =
    last-arrival-wins, not priority. *Fix:* put a `priority` in the request (from the tile
