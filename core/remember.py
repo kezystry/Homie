@@ -52,6 +52,28 @@ class PatternModel:
         days = len(self._dates[key]) or 1
         return Expectation(rate=count / days, count=count, days=days, novel=False)
 
+    def snapshot(self) -> dict:
+        """Serialize the whole model to a JSON-safe dict (small: per-key 24 ints
+        + observed dates). The inverse of restore()."""
+        keys = []
+        for key, counts in self._counts.items():
+            topic, zone = key
+            keys.append(
+                {
+                    "topic": topic,
+                    "zone": zone,
+                    "counts": list(counts),
+                    "dates": sorted(d.isoformat() for d in self._dates.get(key, set())),
+                }
+            )
+        return {"version": 1, "hours": HOURS, "keys": keys}
+
+    def restore(self, snap: dict) -> None:
+        for k in snap.get("keys", []):
+            key = (k["topic"], k["zone"])
+            self._counts[key] = list(k["counts"])
+            self._dates[key] = {date.fromisoformat(s) for s in k["dates"]}
+
 
 class Remember:
     def __init__(self) -> None:
@@ -64,14 +86,26 @@ class Remember:
         """What is expected for this topic/zone at this time."""
         return self.model.expectation(topic, zone, when)
 
+    def snapshot(self) -> dict:
+        """The current pattern of life, for the bus to persist during compaction."""
+        return self.model.snapshot()
+
+    def restore(self, snap: dict) -> None:
+        self.model.restore(snap)
+
     def bootstrap(self, bus) -> None:
         """Rebuild the model from the bus's durability log — the log is the memory.
 
-        Only perception events feed the pattern of life, matching attach(), so
-        internal chatter (interface/actuator/security events) in the log is ignored.
+        Loads the compaction snapshot (if any), then folds the events not yet
+        covered by it (uncovered segments + the live tail). Only perception events
+        feed the pattern of life, matching attach(), so internal chatter is ignored.
+        With no snapshot this degrades to a full replay (backward compatible).
         """
+        snap = bus.load_snapshot()
+        if snap is not None:
+            self.model.restore(snap)
         patterns = [_compile(p) for p in self.PERCEPTION]
-        for event in bus.replay():
+        for event in bus.pending_events():
             if any(p.match(event.topic) for p in patterns):
                 self.model.observe(event)
 

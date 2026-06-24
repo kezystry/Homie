@@ -22,15 +22,28 @@ from core.tile import Supervisor  # noqa: E402
 STATE = Path(os.environ.get("HOMIE_STATE", "/var/lib/homie"))
 
 
+COMPACT_THRESHOLD = int(os.environ.get("HOMIE_COMPACT_THRESHOLD", "5000"))
+COMPACT_INTERVAL = float(os.environ.get("HOMIE_COMPACT_INTERVAL", "3600"))
+
+
+async def _housekeep(bus: Bus, remember: Remember) -> None:
+    """Periodically bound the durability log so it can't grow unbounded or wear
+    the SD card. maybe_compact() no-ops until the append threshold is crossed."""
+    while True:
+        await asyncio.sleep(COMPACT_INTERVAL)
+        await bus.maybe_compact(remember.snapshot)
+
+
 async def main() -> None:
     STATE.mkdir(parents=True, exist_ok=True)
-    bus = Bus(log_path=STATE / "events.jsonl")
+    bus = Bus(log_path=STATE / "events.jsonl", compact_threshold=COMPACT_THRESHOLD)
     remember = Remember()
-    remember.bootstrap(bus)  # rebuild the pattern of life from the durability log
+    remember.bootstrap(bus)  # rebuild the pattern of life from snapshot + tail
     remember.attach(bus)  # keep learning from live perception
     sup = Supervisor(ROOT / "tiles", bus, remember=remember)
     await sup.start_all()
     print(f"homie: up with tiles {sup.status()}", flush=True)
+    asyncio.ensure_future(_housekeep(bus, remember))
     await asyncio.Event().wait()  # run until the service stops us
 
 
