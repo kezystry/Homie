@@ -9,7 +9,30 @@ events = ["presence.arrived", "time.morning"]
 
 [provides]
 intents = ["what's on today", "remind me to *", "add * to my list"]
-functions = ["agenda", "add_reminder", "add_task"]
+
+# Functions the LLM may call (tool-calling). Bare-name form still works; this
+# rich form adds the descriptions + parameter schemas the model needs.
+[[provides.functions]]
+name = "agenda"
+description = "Summarize what is on the user's plate today: reminders and tasks."
+
+[[provides.functions]]
+name = "add_reminder"
+description = "Add a reminder for the user."
+[[provides.functions.params]]
+name = "text"
+type = "string"
+description = "What to be reminded about."
+required = true
+
+[[provides.functions]]
+name = "add_task"
+description = "Add a task to the user's to-do list."
+[[provides.functions.params]]
+name = "text"
+type = "string"
+description = "The task to add."
+required = true
 
 [acts]
 actuators = []          # speaks through the Interface; drives nothing

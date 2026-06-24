@@ -34,6 +34,26 @@ log = logging.getLogger("homie.tile")
 # --------------------------------------------------------------------------- #
 # Contract types
 # --------------------------------------------------------------------------- #
+PARAM_TYPES = frozenset({"string", "number", "integer", "boolean", "array", "object"})
+
+
+@dataclass(frozen=True)
+class ParamSpec:
+    name: str
+    type: str = "string"
+    description: str = ""
+    required: bool = False
+
+
+@dataclass(frozen=True)
+class FunctionSpec:
+    """An LLM-callable function's contract — name, description, and parameters."""
+
+    name: str
+    description: str = ""
+    params: tuple[ParamSpec, ...] = ()
+
+
 @dataclass(frozen=True)
 class Manifest:
     """Parsed tile.toml — the six-clause contract: what a tile touches."""
@@ -42,7 +62,8 @@ class Manifest:
     summary: str
     subscribes: tuple[str, ...] = ()  # event patterns
     intents: tuple[str, ...] = ()  # voice phrases
-    functions: tuple[str, ...] = ()  # LLM-callable
+    functions: tuple[str, ...] = ()  # LLM-callable names (routing key)
+    function_specs: tuple[FunctionSpec, ...] = ()  # parallel rich specs (tool-calling)
     actuators: tuple[str, ...] = ()  # what it may drive
     reads: tuple[str, ...] = ()  # data domains it may read
     network: str = "local"  # "local" | "egress:<host>"
@@ -215,13 +236,14 @@ def load_manifest(toml_path: Path) -> Manifest | InvalidManifest:
     summary = tile.get("summary", "")
     subscribes = tuple(raw.get("subscribes", {}).get("events", []))
     intents = tuple(raw.get("provides", {}).get("intents", []))
-    functions = tuple(raw.get("provides", {}).get("functions", []))
+    errors: list[str] = []
+    function_specs = _parse_functions(raw.get("provides", {}).get("functions", []), errors)
+    functions = tuple(s.name for s in function_specs)
     actuators = tuple(raw.get("acts", {}).get("actuators", []))
     perms = raw.get("permissions", {})
     reads = tuple(perms.get("reads", []))
     network = perms.get("network", "local")
 
-    errors: list[str] = []
     if not _NAME.match(name):
         errors.append(f"invalid name '{name}'")
     elif name != folder_name:
@@ -246,11 +268,49 @@ def load_manifest(toml_path: Path) -> Manifest | InvalidManifest:
         subscribes=subscribes,
         intents=intents,
         functions=functions,
+        function_specs=function_specs,
         actuators=actuators,
         reads=reads,
         network=network,
         path=folder,
     )
+
+
+def _parse_functions(raw_functions, errors: list[str]) -> tuple[FunctionSpec, ...]:
+    """Parse [provides].functions, which may be a list of bare names (strings) or
+    a list of rich tables ([[provides.functions]] with name/description/params).
+    Best-effort: structural problems append to `errors` (fail-closed via the caller)."""
+    specs: list[FunctionSpec] = []
+    for entry in raw_functions:
+        if isinstance(entry, str):
+            specs.append(FunctionSpec(name=entry))
+            continue
+        if not isinstance(entry, dict):
+            errors.append("invalid function entry")
+            continue
+        fname = entry.get("name", "")
+        if not fname:
+            errors.append("function missing name")
+            continue
+        params: list[ParamSpec] = []
+        for p in entry.get("params", []):
+            pname = p.get("name", "") if isinstance(p, dict) else ""
+            if not pname:
+                errors.append(f"param missing name on function '{fname}'")
+                continue
+            ptype = p.get("type", "string")
+            if ptype not in PARAM_TYPES:
+                errors.append(f"invalid param type '{ptype}' on function '{fname}'")
+            params.append(
+                ParamSpec(
+                    name=pname,
+                    type=ptype,
+                    description=p.get("description", ""),
+                    required=bool(p.get("required", False)),
+                )
+            )
+        specs.append(FunctionSpec(name=fname, description=entry.get("description", ""), params=tuple(params)))
+    return tuple(specs)
 
 
 def _load_module(path: Path, modname: str):
@@ -500,6 +560,14 @@ class Supervisor:
             self._tiles[name] = TileRecord(name, None, None, None, "INVALID", invalid=manifest)
             log.warning("tile %s invalid: %s", name, "; ".join(manifest.errors))
             return
+        clashes = [f"function '{fn}' already provided by tile '{self._function_owner(fn)}'"
+                   for fn in manifest.functions if self._function_owner(fn) not in (None, name)]
+        if clashes:  # global function-name uniqueness — surface the collision, don't shadow
+            self._tiles[name] = TileRecord(
+                name, None, None, None, "INVALID", invalid=InvalidManifest(name, manifest.path, tuple(clashes))
+            )
+            log.warning("tile %s invalid: %s", name, "; ".join(clashes))
+            return
         ctx = self._make_ctx(manifest)
         channel = channel_for(manifest, ctx)
         await channel.start()
@@ -542,6 +610,38 @@ class Supervisor:
             if rec.state == "READY" and rec.manifest and fn in rec.manifest.functions:
                 return await asyncio.wait_for(rec.channel.call(fn, **args), timeout=self.policy.event_timeout)
         raise KeyError(f"no ready tile provides function '{fn}'")
+
+    def tool_catalog(self) -> list[dict]:
+        """OpenAI-style `tools` array for every function on every READY tile —
+        directly usable as the model's tool list. A quarantined tile offers nothing."""
+        tools: list[dict] = []
+        for rec in self._tiles.values():
+            if rec.state != "READY" or not rec.manifest:
+                continue
+            for spec in rec.manifest.function_specs:
+                props = {}
+                required = []
+                for p in spec.params:
+                    schema = {"type": p.type}
+                    if p.description:
+                        schema["description"] = p.description
+                    props[p.name] = schema
+                    if p.required:
+                        required.append(p.name)
+                parameters = {"type": "object", "properties": props}
+                if required:
+                    parameters["required"] = required
+                tools.append(
+                    {"type": "function",
+                     "function": {"name": spec.name, "description": spec.description, "parameters": parameters}}
+                )
+        return tools
+
+    def _function_owner(self, fn: str) -> str | None:
+        for rec in self._tiles.values():
+            if rec.state == "READY" and rec.manifest and fn in rec.manifest.functions:
+                return rec.name
+        return None
 
     async def deliver_friction(self, signal: FrictionSignal) -> None:
         rec = self._tiles.get(signal.target_tile) if signal.target_tile else None

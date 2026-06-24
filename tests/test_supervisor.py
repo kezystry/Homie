@@ -20,6 +20,16 @@ from core.tile import (
     load_manifest,
 )
 
+
+def rich_toml(name: str, function_blocks: str) -> str:
+    return (
+        f'[tile]\nname = "{name}"\nsummary = "rich tile"\n'
+        f"[subscribes]\nevents = []\n"
+        f"[provides]\nintents = []\n{function_blocks}\n"
+        f"[acts]\nactuators = []\n"
+        f'[permissions]\nreads = []\nnetwork = "local"\n'
+    )
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -65,6 +75,48 @@ class ManifestTests(unittest.TestCase):
             self.assertIsInstance(m, InvalidManifest)
             self.assertTrue(any("network" in e for e in m.errors))
             self.assertTrue(any("subscribe" in e for e in m.errors))
+
+    def test_bare_functions_backcompat(self) -> None:
+        with TemporaryDirectory() as d:
+            make_tile(Path(d), "x", toml=toml_for("x", functions=["a", "b"]), handlers="")
+            m = load_manifest(Path(d) / "x" / "tile.toml")
+            self.assertEqual(m.functions, ("a", "b"))
+            self.assertEqual(len(m.function_specs), 2)
+            self.assertEqual(m.function_specs[0].description, "")
+            self.assertEqual(m.function_specs[0].params, ())
+
+    def test_rich_functions_parse(self) -> None:
+        blocks = (
+            '[[provides.functions]]\nname = "add_reminder"\ndescription = "Add a reminder."\n'
+            '[[provides.functions.params]]\nname = "text"\ntype = "string"\nrequired = true\n'
+        )
+        with TemporaryDirectory() as d:
+            make_tile(Path(d), "r", toml=rich_toml("r", blocks), handlers="")
+            m = load_manifest(Path(d) / "r" / "tile.toml")
+            self.assertEqual(m.functions, ("add_reminder",))
+            spec = m.function_specs[0]
+            self.assertEqual(spec.description, "Add a reminder.")
+            self.assertEqual(spec.params[0].name, "text")
+            self.assertEqual(spec.params[0].type, "string")
+            self.assertTrue(spec.params[0].required)
+
+    def test_invalid_param_type(self) -> None:
+        blocks = (
+            '[[provides.functions]]\nname = "f"\ndescription = "x"\n'
+            '[[provides.functions.params]]\nname = "n"\ntype = "str"\n'  # not allowed
+        )
+        with TemporaryDirectory() as d:
+            make_tile(Path(d), "r", toml=rich_toml("r", blocks), handlers="")
+            m = load_manifest(Path(d) / "r" / "tile.toml")
+            self.assertIsInstance(m, InvalidManifest)
+            self.assertTrue(any("param type" in e for e in m.errors))
+
+    def test_personal_rich_names_unchanged(self) -> None:
+        m = load_manifest(ROOT / "tiles" / "personal" / "tile.toml")
+        self.assertIsInstance(m, Manifest)
+        self.assertEqual(m.functions, ("agenda", "add_reminder", "add_task"))
+        add_reminder = next(s for s in m.function_specs if s.name == "add_reminder")
+        self.assertEqual(add_reminder.params[0].name, "text")
 
 
 class PermissionTests(unittest.IsolatedAsyncioTestCase):
@@ -148,6 +200,53 @@ class SupervisorTests(unittest.IsolatedAsyncioTestCase):
             await bus.drain()
             self.assertEqual(sup.status()["boom"], "QUARANTINED")
             await bus.aclose()
+
+    async def test_tool_catalog_roundtrip(self) -> None:
+        blocks = (
+            '[[provides.functions]]\nname = "ping"\ndescription = "Say pong."\n'
+            '[[provides.functions]]\nname = "echo"\ndescription = "Echo text."\n'
+            '[[provides.functions.params]]\nname = "text"\ntype = "string"\nrequired = true\n'
+        )
+        with TemporaryDirectory() as d:
+            (Path(d) / "calc").mkdir(parents=True)
+            (Path(d) / "calc" / "tile.toml").write_text(rich_toml("calc", blocks), "utf-8")
+            (Path(d) / "calc" / "handlers.py").write_text(
+                "from core.tile import Tile\n"
+                "class Calc(Tile):\n"
+                "    async def on_event(self, event, ctx): ...\n"
+                "    async def ping(self, ctx): return 'pong'\n"
+                "    async def echo(self, ctx, text): return text\n",
+                "utf-8",
+            )
+            sup = Supervisor(Path(d), Bus())
+            await sup.start("calc")
+            catalog = sup.tool_catalog()
+            by_name = {t["function"]["name"]: t["function"] for t in catalog}
+            self.assertEqual(set(by_name), {"ping", "echo"})
+            self.assertEqual(by_name["ping"]["parameters"], {"type": "object", "properties": {}})
+            self.assertEqual(by_name["echo"]["parameters"]["required"], ["text"])
+            self.assertEqual(by_name["echo"]["parameters"]["properties"]["text"]["type"], "string")
+            # the catalog name is actually callable
+            self.assertEqual(await sup.call_function("echo", text="hi"), "hi")
+
+    async def test_duplicate_function_name_across_tiles_refused(self) -> None:
+        blocks = '[[provides.functions]]\nname = "agenda"\ndescription = "x"\n'
+        with TemporaryDirectory() as d:
+            for n in ("one", "two"):
+                (Path(d) / n).mkdir(parents=True)
+                (Path(d) / n / "tile.toml").write_text(rich_toml(n, blocks), "utf-8")
+                (Path(d) / n / "handlers.py").write_text(
+                    "from core.tile import Tile\n"
+                    "class T(Tile):\n"
+                    "    async def on_event(self, event, ctx): ...\n"
+                    "    async def agenda(self, ctx): return 1\n",
+                    "utf-8",
+                )
+            sup = Supervisor(Path(d), Bus())
+            await sup.start("one")
+            await sup.start("two")  # collides on 'agenda'
+            self.assertEqual(sup.status()["one"], "READY")
+            self.assertEqual(sup.status()["two"], "INVALID")
 
     async def test_call_function(self) -> None:
         with TemporaryDirectory() as d:
