@@ -1,0 +1,19 @@
+# Personal Assistant — the reference tile. Calendar, reminders, day-to-day tasks.
+
+[tile]
+name = "personal"
+summary = "Calendar, reminders, and day-to-day tasks."
+
+[subscribes]
+events = ["presence.arrived", "time.morning"]
+
+[provides]
+intents = ["what's on today", "remind me to *", "add * to my list"]
+functions = ["agenda", "add_reminder", "add_task"]
+
+[acts]
+actuators = []          # speaks through the Interface; drives nothing
+
+[permissions]
+reads = ["calendar", "tasks"]
+network = "local"

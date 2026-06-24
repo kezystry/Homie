@@ -1,0 +1,13 @@
+# Self-dependent tile state — config, secrets, data
+tiles/*/state/
+
+# Mesh keys and secrets — never committed
+*.key
+*.pem
+secrets/
+deploy/secrets/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
