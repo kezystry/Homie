@@ -48,6 +48,10 @@ class Event:
     topic: str  # dotted, e.g. "presence.arrived"
     ts: float
     payload: dict = field(default_factory=dict)
+    source: str | None = None  # publisher: "perception", "tile:kitchen", ...
+    id: str | None = None  # dedup key (mesh fan-in)
+    origin: str | None = None  # node where first published
+    ttl: float | None = None  # mesh hops remaining; None/0 = node-local
 
 
 @dataclass(frozen=True)
