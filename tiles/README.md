@@ -19,4 +19,8 @@ To add a capability, copy [`_template/`](_template/) to `tiles/<name>/` and fill
 it in. Self-learning, self-healing, and isolation are guaranteed by the runtime
 (`core/tile.py`); the tile only declares its behaviour.
 
+A tile runs in-process by default; declaring `network = "egress:<host>"` (or a
+third-party origin) makes the runtime isolate it in a subprocess. Either way the
+core speaks to it through the same wire protocol — see [`../PROTOCOL.md`](../PROTOCOL.md).
+
 [`personal/`](personal/) is the reference implementation.

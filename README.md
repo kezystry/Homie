@@ -36,6 +36,9 @@ self-learning, self-healing, self-dependent.
   the tile contract.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — how it's built: the OS, the mesh, the
   nodes, the layout.
+- [`INTERNALS.md`](INTERNALS.md) — the engineering decisions: language, bus,
+  mesh, isolation.
+- [`PROTOCOL.md`](PROTOCOL.md) — the tile wire protocol.
 - [`SECURITY.md`](SECURITY.md) — the privacy, encryption, and identity model.
 - [`ROADMAP.md`](ROADMAP.md) — the build order.
 
