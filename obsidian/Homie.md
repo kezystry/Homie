@@ -18,7 +18,7 @@ This is the map of the whole project. Prose lives in the repo (`OVERVIEW.md`,
 ## Building it
 - [[Always-on topology]] · [[Hardware]] · [[Roadmap]] · [[Open questions]]
 - [[Nightly ritual]] (the 23:59 sleep cycle) · [[Backlog]] (bugs/fixes/upgrades)
-- [[Decisions log]] · [[Glossary]]
+- [[Bring-up]] (code → running home) · [[Decisions log]] · [[Glossary]]
 
 ## Status
 Reasoning-node spine built and tested (**83 stdlib tests**). Working: the bus,
