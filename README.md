@@ -85,6 +85,7 @@ obsidian/    the same notes as a cross-linked, importable Obsidian vault
 - [docs/PROTOCOL.md](docs/PROTOCOL.md) — the tile wire protocol
 - [docs/SECURITY.md](docs/SECURITY.md) — privacy, encryption, identity scope
 - [docs/PLAN.md](docs/PLAN.md) — the hardware build plan (always-on topology + question bank)
+- [docs/WALKTHROUGH.md](docs/WALKTHROUGH.md) — the guided, checkpointed OS install (start here to install)
 - [docs/BRINGUP.md](docs/BRINGUP.md) — the order to make the software physical
 - [docs/ROADMAP.md](docs/ROADMAP.md) — the build order
 - [docs/BACKLOG.md](docs/BACKLOG.md) — the audit backlog (bugs / fixes / upgrades)
