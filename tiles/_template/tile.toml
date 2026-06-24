@@ -1,0 +1,20 @@
+# Copy this folder to tiles/<name>/ and fill it in. A tile declares what it
+# touches; the runtime guarantees self-learning, self-healing, and isolation.
+
+[tile]
+name = "template"
+summary = "One line: what this tile does."
+
+[subscribes]
+events = []          # patterns from the bus this tile reacts to
+
+[provides]
+intents = []         # voice phrases the user can speak
+functions = []       # functions the LLM may call
+
+[acts]
+actuators = []       # actuators this tile may drive (empty = speaks only)
+
+[permissions]
+reads = []           # data domains this tile may read
+network = "local"    # local | egress:<host>   (default: local-only)

@@ -1,0 +1,18 @@
+# The ONLY binding from Homie actuator names to Home Assistant entity_ids.
+# This file is also the allowlist and the never-touch guard:
+#   - an actuator with no entry here is refused (a tile cannot drive it)
+#   - an entity listed under [never_touch] is dropped even if mapped, so Homie
+#     can never write it (it may still be read for the pattern of life)
+#
+# Homie actuator names are semantic + room-based; the entity_ids are IKEA/HA's.
+# Fill these in for your home (see Q18/Q22 in PLAN.md).
+
+[actuators]
+"light.living_room" = "light.tradfri_living_room"
+"light.kitchen"     = "light.tradfri_kitchen"
+"light.hallway"     = "light.tradfri_hallway"
+"light.bedroom"     = "light.tradfri_bedroom"
+
+[never_touch]
+# Entities Homie must never control under any circumstance.
+entities = ["lock.front_door", "climate.office_heater"]
