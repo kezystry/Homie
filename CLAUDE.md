@@ -24,8 +24,8 @@
   protocol), `docs/SECURITY.md` (privacy/identity), `docs/ARCHITECTURE.md`, `os/`
   (dual-boot NixOS + `INSTALL.md`).
 - **Code:** `core/` (`bus`, `remember`, `tile` runtime + channels, `mesh`, `act`,
-  `reason`, `reconcile`, `consent`), `tiles/` (`personal`, `security`), `tests/`
-  (108 passing), `scripts/run.py` (daemon), `scripts/spine_demo.py`.
+  `reason`, `reconcile`, `consent`, `canonical`), `tiles/` (`personal`, `security`,
+  `lighting`), `tests/` (135 passing), `scripts/run.py` (daemon), `scripts/spine_demo.py`.
 - **Importable notes:** `obsidian/` is a cross-linked Obsidian vault mirroring the docs.
 
 ## Decided architecture (see docs/PLAN.md)

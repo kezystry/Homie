@@ -5,7 +5,7 @@ tags: [homie, plan, questions]
 # Backlog
 
 Bugs, fixes, and upgrades — a living reminder, from an adversarial code audit
-(108 tests pass; architecture sound). Full detail in the repo's `docs/BACKLOG.md`.
+(135 tests pass; architecture sound). Full detail in the repo's `docs/BACKLOG.md`.
 Grouped by the five self-* principles.
 
 ## High
