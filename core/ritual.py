@@ -31,6 +31,29 @@ def _never() -> bool:
     return False
 
 
+def _gate(fn, name: str, reasons: list) -> None:
+    """Evaluate an abort predicate fail-safe. A raising gate counts as the safe
+    'disrupt-not' answer (it fences the disruptive tail) and NEVER aborts the pass
+    — consistent with RitualGates' contract that a gate can only ever *prevent* a
+    disruptive step, never cause one."""
+    try:
+        if fn():
+            reasons.append(name)
+    except Exception:
+        log.exception("ritual: abort-gate '%s' raised; fencing the disruptive tail", name)
+        reasons.append(name)
+
+
+def _safe_status(supervisor) -> dict:
+    """supervisor.status(), but a failure degrades to an empty map rather than
+    aborting the whole consolidation pass."""
+    try:
+        return supervisor.status()
+    except Exception:
+        log.exception("ritual: supervisor.status() failed")
+        return {}
+
+
 @dataclass(frozen=True)
 class RitualGates:
     """Injectable abort predicates. Each defaults to the safe "don't disrupt" answer
@@ -88,30 +111,28 @@ async def consolidate(
             log.exception("ritual: L4 sweep failed")
 
     # 0. Abort gates fence the disruptive tail only. Consolidation above has run.
-    reasons = []
-    if gates.is_someone_home():
-        reasons.append("home")
-    if gates.security_live():
-        reasons.append("security")
-    if gates.gaming():
-        reasons.append("gaming")
+    # Each gate is evaluated fail-safe: a raising predicate fences the tail rather
+    # than aborting the pass (the durable consolidation has already committed).
+    reasons: list = []
+    _gate(gates.is_someone_home, "home", reasons)
+    _gate(gates.security_live, "security", reasons)
+    _gate(gates.gaming, "gaming", reasons)
     if reasons:
         report.aborted_disruptive = True
         report.abort_reasons = tuple(reasons)
-        report.health = supervisor.status()
+        report.health = _safe_status(supervisor)
         log.info("ritual: consolidated; skipped disruptive steps (%s)", ", ".join(reasons))
         return report
 
     # 5. Self-healing sweep: recover any quarantined/degraded tile.
-    status = supervisor.status()
-    for name, state in status.items():
+    for name, state in _safe_status(supervisor).items():
         if state in ("QUARANTINED", "DEGRADED"):
             try:
                 await supervisor.reload(name)
                 report.healed.append(name)
             except Exception:
                 log.exception("ritual: reload of '%s' failed", name)
-    report.health = supervisor.status()
+    report.health = _safe_status(supervisor)
 
     # 6. Restart decision — advisory ONLY. The OS wrapper enacts it; we never do.
     unhealthy = any(s not in ("READY",) for s in report.health.values())

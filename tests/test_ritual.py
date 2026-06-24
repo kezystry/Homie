@@ -108,6 +108,41 @@ class RitualTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(changed.restart_decision, "soft")
             await bus.aclose()
 
+    async def test_raising_gate_fences_tail_without_aborting(self) -> None:
+        # a gate that raises must not crash the pass — it fences the disruptive tail
+        with TemporaryDirectory() as d:
+            bus, remember = await seeded_bus(Path(d))
+            sup = SpySupervisor({"broken": "QUARANTINED"})
+
+            def boom() -> bool:
+                raise RuntimeError("gate boom")
+
+            report = await consolidate(
+                bus=bus, remember=remember, supervisor=sup, now=2000.0,
+                gates=RitualGates(security_live=boom),
+            )
+            self.assertTrue(report.compacted)  # invisible consolidation still committed
+            self.assertTrue(report.aborted_disruptive)
+            self.assertIn("security", report.abort_reasons)  # raising gate counts as "disrupt-not"
+            self.assertEqual(sup.reloaded, [])  # tail fenced — no self-heal
+            await bus.aclose()
+
+    async def test_raising_status_degrades_gracefully(self) -> None:
+        with TemporaryDirectory() as d:
+            bus, remember = await seeded_bus(Path(d))
+
+            class BadSup:
+                def status(self):
+                    raise RuntimeError("status boom")
+
+                async def reload(self, name):
+                    pass
+
+            report = await consolidate(bus=bus, remember=remember, supervisor=BadSup(), now=2000.0)
+            self.assertTrue(report.compacted)  # the pass completed despite status() failing
+            self.assertEqual(report.health, {})
+            await bus.aclose()
+
     async def test_idempotent_at_same_now(self) -> None:
         with TemporaryDirectory() as d:
             bus, remember = await seeded_bus(Path(d))

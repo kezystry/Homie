@@ -35,7 +35,7 @@ Python 3.11+, standard library only — no dependencies to run the spine.
 
 ```sh
 git clone https://github.com/kezystry/homie.git && cd homie
-python3 -m unittest discover -s tests   # the test suite (150 tests)
+python3 -m unittest discover -s tests   # the test suite (169 tests)
 python3 scripts/spine_demo.py           # the loop, end to end on one node
 python3 scripts/run.py                  # the daemon (bus + Remember + Supervisor + tiles)
 ```
@@ -49,7 +49,7 @@ writes to it. See **[os/INSTALL.md](os/INSTALL.md)**.
 
 ## Status
 
-The reasoning-node spine runs and is tested (**150 stdlib tests**). Built and
+The reasoning-node spine runs and is tested (**169 stdlib tests**). Built and
 working today: the asyncio event bus with priority arbitration and a crash-safe
 durability log, Behavioral Analysis (the pattern-of-life model, with decay), the
 tile runtime (in-process + subprocess isolation, supervision, self-healing), the
@@ -68,7 +68,7 @@ the Noise mesh transport, and the nightly consolidation ritual. The order is in
 core/        the spine: bus, remember, tile runtime, act, reason, reconcile,
              consent, mesh, perceive, interface
 tiles/       living tiles (personal, security, lighting) + _template for new ones
-tests/       stdlib unittest suite (150 passing)
+tests/       stdlib unittest suite (169 passing)
 scripts/     run.py (daemon) · spine_demo.py (end-to-end demo)
 os/          dual-boot NixOS profile + INSTALL.md
 deploy/      runtime config (e.g. act_map.toml)
