@@ -27,6 +27,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from typing import Awaitable, Callable, Protocol
 
 from core.canonical import Canon, ha_canonical
@@ -138,17 +139,27 @@ class HomeAssistantClient:
         *,
         backoff_min: float = 1.0,
         backoff_max: float = 30.0,
+        result_timeout: float = 10.0,
+        heartbeat_interval: float = 30.0,
+        heartbeat_timeout: float = 70.0,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        now: Callable[[], float] = time.monotonic,
     ) -> None:
         self._connect_factory = connect_factory
         self._token = token
         self._backoff_min = backoff_min
         self._backoff_max = backoff_max
+        self._result_timeout = result_timeout      # how long drive() waits for HA's result
+        self._heartbeat_interval = heartbeat_interval  # ping cadence; 0 disables the heartbeat
+        self._heartbeat_timeout = heartbeat_timeout    # silence beyond this => force reconnect
         self._sleep = sleep
+        self._now = now
         self._handler: StateHandler | None = None
         self._conn: HAConnection | None = None
         self._id = 1  # HA requires a strictly increasing message id after auth
         self._send_lock = asyncio.Lock()
+        self._pending: dict[int, asyncio.Future] = {}  # call_service id -> result future (NEW-1)
+        self._last_recv = 0.0  # monotonic stamp of the last inbound message (liveness, NEW-2)
         self._task: asyncio.Task | None = None
         self._closing = False
         self.connected = asyncio.Event()  # set after auth+subscribe; tests await it
@@ -158,23 +169,39 @@ class HomeAssistantClient:
         self._handler = handler
 
     async def drive(self, entity_id: str, command: object) -> None:
-        """Issue a `call_service` on the live connection. Raises if disconnected — Act
-        catches that and emits `actuator.failed`, which is the honest outcome when HA is
-        unreachable (better than silently dropping the command)."""
+        """Issue a `call_service` and WAIT for HA's result (NEW-1). Raises if disconnected,
+        if HA does not answer in time, or if HA reports failure — Act catches that and emits
+        `actuator.failed`. Without this, an HA-level rejection (entity unavailable, bad
+        service) would look like success: the command sits in the CommandLog, no echo ever
+        matches, and Homie believes the home changed when it did not."""
         conn = self._conn
         if conn is None:
             raise ConnectionError("Home Assistant is not connected")
         domain, service, service_data = command_to_call(entity_id, command)
+        fut = asyncio.get_running_loop().create_future()
         async with self._send_lock:
             self._id += 1
-            await conn.send({
-                "id": self._id,
-                "type": "call_service",
-                "domain": domain,
-                "service": service,
-                "service_data": service_data,
-                "target": {"entity_id": entity_id},
-            })
+            msg_id = self._id
+            self._pending[msg_id] = fut
+            try:
+                await conn.send({
+                    "id": msg_id,
+                    "type": "call_service",
+                    "domain": domain,
+                    "service": service,
+                    "service_data": service_data,
+                    "target": {"entity_id": entity_id},
+                })
+            except Exception:
+                self._pending.pop(msg_id, None)
+                raise
+        try:
+            success = await asyncio.wait_for(fut, self._result_timeout)
+        except asyncio.TimeoutError as ex:
+            self._pending.pop(msg_id, None)
+            raise ConnectionError(f"Home Assistant did not confirm {service} on {entity_id}") from ex
+        if not success:
+            raise RuntimeError(f"Home Assistant rejected {service} on {entity_id}")
 
     # --- lifecycle (called by the Daemon if present) -------------------------- #
     async def start(self) -> None:
@@ -197,6 +224,7 @@ class HomeAssistantClient:
             except Exception:
                 pass
             self._conn = None
+        self._fail_pending(ConnectionError("Home Assistant client stopped"))
         self.connected.clear()
 
     # --- the connection loop -------------------------------------------------- #
@@ -204,22 +232,37 @@ class HomeAssistantClient:
         delay = self._backoff_min
         while not self._closing:
             conn: HAConnection | None = None
+            hb: asyncio.Task | None = None
             try:
                 conn = self._connect_factory()
                 await conn.connect()
                 await self._handshake(conn)
                 self._conn = conn
+                self._last_recv = self._now()
                 self.connected.set()
                 delay = self._backoff_min  # a clean connect resets the backoff
+                if self._heartbeat_interval:
+                    hb = asyncio.ensure_future(self._heartbeat(conn))
                 while not self._closing:
-                    await self._dispatch(await conn.recv())
+                    message = await conn.recv()
+                    self._last_recv = self._now()  # liveness: any inbound traffic counts
+                    await self._handle(message)
             except asyncio.CancelledError:
                 raise
             except Exception as ex:
                 log.warning("HA connection lost (%r); reconnecting in %.1fs", ex, delay)
             finally:
+                if hb is not None:
+                    hb.cancel()
+                    try:
+                        await hb
+                    except (asyncio.CancelledError, Exception):
+                        pass
                 self._conn = None
                 self.connected.clear()
+                # A dropped connection can never deliver outstanding results — fail them now
+                # so a drive() in flight raises instead of hanging until its timeout (NEW-1).
+                self._fail_pending(ConnectionError("Home Assistant connection lost"))
                 if conn is not None:
                     try:
                         await conn.close()
@@ -229,6 +272,35 @@ class HomeAssistantClient:
                 break
             await self._sleep(delay)
             delay = min(delay * 2, self._backoff_max)
+
+    async def _heartbeat(self, conn: HAConnection) -> None:
+        """Liveness (NEW-2): a half-open TCP (router reboot, NAT timeout, HA host sleep)
+        sends no FIN/RST, so `recv()` would block forever and the reconnect machinery never
+        runs. Send HA's app-level `ping` on a cadence; if NOTHING arrives (not even our own
+        pong) within `heartbeat_timeout`, close the socket to force a reconnect."""
+        while not self._closing:
+            await self._sleep(self._heartbeat_interval)
+            if self._closing:
+                return
+            if self._now() - self._last_recv > self._heartbeat_timeout:
+                log.warning("HA silent for >%.0fs; forcing reconnect", self._heartbeat_timeout)
+                try:
+                    await conn.close()  # unblocks the parked recv() -> the loop reconnects
+                except Exception:
+                    pass
+                return
+            try:
+                async with self._send_lock:
+                    self._id += 1
+                    await conn.send({"id": self._id, "type": "ping"})
+            except Exception:
+                return  # the send failed; the recv loop will see the drop and reconnect
+
+    def _fail_pending(self, exc: Exception) -> None:
+        pending, self._pending = self._pending, {}
+        for fut in pending.values():
+            if not fut.done():
+                fut.set_exception(exc)
 
     async def _handshake(self, conn: HAConnection) -> None:
         """HA's auth + subscribe handshake: auth_required → auth → auth_ok, then
@@ -246,9 +318,17 @@ class HomeAssistantClient:
         if not (result.get("type") == "result" and result.get("success")):
             raise ConnectionError("HA subscribe_events failed")
 
-    async def _dispatch(self, message: dict) -> None:
-        if message.get("type") != "event":
-            return  # results / pongs / etc. — not a state change
+    async def _handle(self, message: dict) -> None:
+        mtype = message.get("type")
+        if mtype == "result":  # the ack for a call_service (NEW-1) — resolve the waiter
+            fut = self._pending.pop(message.get("id"), None)
+            if fut is not None and not fut.done():
+                fut.set_result(bool(message.get("success")))
+            return
+        if mtype == "pong":
+            return  # liveness only — _last_recv was already bumped by the recv loop
+        if mtype != "event":
+            return
         event = message.get("event") or {}
         if event.get("event_type") != "state_changed":
             return

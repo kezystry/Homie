@@ -30,6 +30,10 @@ OP_CLOSE = 0x8
 OP_PING = 0x9
 OP_PONG = 0xA
 
+# Cap a single inbound frame so a hostile or buggy server can't request an unbounded
+# allocation via the 64-bit length field. HA messages are small; 16 MiB is generous.
+MAX_FRAME_BYTES = 16 * 1024 * 1024
+
 
 def accept_key(client_key: str) -> str:
     """The Sec-WebSocket-Accept value the server must return for `client_key`."""
@@ -161,6 +165,8 @@ class WSClient:
         elif length == 127:
             ext = await self._r.readexactly(8)
             length = struct.unpack("!Q", ext)[0]
+        if length > MAX_FRAME_BYTES:  # refuse an unbounded allocation from a bad/hostile server
+            raise ConnectionError(f"WebSocket frame too large: {length} bytes")
         masked = bool(head[1] & 0x80)
         mask = await self._r.readexactly(4) if masked else b""
         body = await self._r.readexactly(length)
