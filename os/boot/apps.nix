@@ -50,7 +50,20 @@
     # `homie-watch` — the one-line "watch movies" command (plan Stage 2). Runs
     # Stremio fullscreen under gamescope straight from the console. Extra args
     # pass through to gamescope (e.g. `homie-watch -w 1920 -h 1080`).
+    #
+    # Guard rails learned at bring-up: gamescope opens the display through the
+    # caller's USER session, so it must run as `homie`, not root/sudo — as root
+    # there is no XDG_RUNTIME_DIR and it dies with "unable to open wayland
+    # socket". Refuse root early with a clear message, and fall back to the
+    # conventional runtime dir if a bare console login didn't export one.
     (writeShellScriptBin "homie-watch" ''
+      if [ "$(id -u)" = 0 ]; then
+        echo "Run homie-watch as the 'homie' user, not via sudo/root —" >&2
+        echo "gamescope needs your user session (XDG_RUNTIME_DIR) to open the screen." >&2
+        exit 1
+      fi
+      : "''${XDG_RUNTIME_DIR:=/run/user/$(id -u)}"
+      export XDG_RUNTIME_DIR
       exec ${pkgs.gamescope}/bin/gamescope -f "$@" -- ${pkgs.stremio}/bin/stremio
     '')
 
