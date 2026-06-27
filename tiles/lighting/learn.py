@@ -16,22 +16,37 @@ def _hour(ts: float) -> int:
     return datetime.fromtimestamp(ts).hour
 
 
-async def learn(state, friction) -> None:
+def _oclock(hour: int) -> str:
+    """A human "around 7pm" for the spoken lesson — friendlier than "19:00"."""
+    suffix = "am" if hour < 12 else "pm"
+    h12 = hour % 12 or 12
+    return f"{h12}{suffix}"
+
+
+async def learn(state, friction) -> str | None:
+    """Fold a correction into the suppression map. Returns a ONE-LINE narration the
+    runtime speaks the FIRST time a given (room, hour) lesson forms — the moment the
+    home audibly admits it learned something hour-shaped about this household (M4) —
+    and None for a repeat or an ignored correction (so it never narrates a tick twice)."""
     if friction.kind not in ("reversal", "remark"):
-        return
+        return None
     if (friction.actor or "").lower().startswith(_EXCLUDED_ACTORS):
-        return  # a guest's correction is not a household preference
+        return None  # a guest's correction is not a household preference
 
     ref = friction.reverses
     room = friction.zone
     if room is None and ref is not None and ref.actuator.startswith("light."):
         room = ref.actuator.split(".", 1)[1]
     if not room:
-        return
+        return None
 
     when = ref.at if ref is not None else friction.at
+    hour = _hour(when)
     suppressed = dict(state.get("suppressed", {}))
     hours = set(suppressed.get(room, []))
-    hours.add(_hour(when))
+    if hour in hours:
+        return None  # already learned this (room, hour) — stay quiet
+    hours.add(hour)
     suppressed[room] = sorted(hours)
     await state.put("suppressed", suppressed)
+    return f"Got it — I'll stop lighting the {room} around {_oclock(hour)}."

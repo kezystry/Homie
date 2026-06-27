@@ -785,8 +785,8 @@ all the time-shaped behavior the rest of the plan assumes exists.
 
 ## Sequence at a glance
 
-> **Shipped so far** (branch `claude/homie-overview-bo4l8v`, 270 tests green):
-> **M0, M1, M2, M2.5, M3**. Next: **M4** (the hour-shaped lesson, spoken back).
+> **Shipped so far** (branch `claude/homie-overview-bo4l8v`, 271 tests green):
+> **M0, M1, M2, M2.5, M3, M4**. Next: **M5** (capability-gated act path; closes C2/C14).
 
 ```
 M0  [hours]      Pi-anchor chat fallback (never silent)            → proof-of-life

@@ -423,7 +423,9 @@ class InProcessChannel:
 
     async def deliver_friction(self, signal: FrictionSignal) -> None:
         if self._learn:
-            await self._learn(self._state, signal)
+            note = await self._learn(self._state, signal)
+            if note:  # the tile changed its mind — let it say so, once (M4)
+                await self.ctx.speak(note)
 
     async def call(self, fn: str, **args) -> object:
         return await getattr(self._tile, fn)(self.ctx, **args)
