@@ -95,6 +95,23 @@ class PatternModel:
         rate = count / days if days > 0.0 else 0.0  # d cancels: a stopped pattern's rate holds
         return Expectation(rate=rate, count=count, days=days, novel=False)
 
+    def keys(self) -> list[Key]:
+        """The (topic, zone) keys currently held. Pure read."""
+        return list(self._w)
+
+    def decayed_weights(self, key: Key, now: float) -> list[float]:
+        """The 24-hour weight vector for `key`, aged to `now`. Pure read — a scratch
+        copy, never mutates. Returns all-zeros for an unknown key."""
+        w = self._w.get(key)
+        if not w:
+            return [0.0] * HOURS
+        d = self._factor(now - self._last[key])
+        return [x * d for x in w]
+
+    def last_update(self, key: Key) -> float | None:
+        """Epoch of the most recent observation for `key` (its 'last seen')."""
+        return self._last.get(key)
+
     def decay(self, now: float) -> None:
         """Realize decay on every key to `now` and prune those that have faded
         away (→ novel again). Idempotent at a fixed `now`. Called nightly."""
@@ -185,6 +202,33 @@ class Remember:
     def decay(self, now: float) -> None:
         """Age + prune the pattern of life (the nightly consolidation calls this)."""
         self.model.decay(now)
+
+    # -- read-only pattern-of-life queries (the anchor voice answers from these) -- #
+    def zones(self) -> list[str]:
+        """Distinct zones the pattern of life has ever seen, sorted."""
+        return sorted({z for (_t, z) in self.model.keys() if z})
+
+    def pattern_count(self) -> int:
+        """How many (topic, zone) patterns are currently held."""
+        return len(self.model.keys())
+
+    def describe_zone(self, zone: str, now: float) -> dict | None:
+        """A small human-facing summary of a zone's pattern of life: the busiest
+        hour-of-day (aggregated across topics) and when it was last seen. Returns
+        None if the zone is unknown, or {"hour": None, ...} if it has fully decayed."""
+        keys = [k for k in self.model.keys() if k[1] == zone]
+        if not keys:
+            return None
+        hours = [0.0] * HOURS
+        last: float | None = None
+        for k in keys:
+            for j, x in enumerate(self.model.decayed_weights(k, now)):
+                hours[j] += x
+            lu = self.model.last_update(k)
+            if lu is not None:
+                last = lu if last is None else max(last, lu)
+        peak = hours.index(max(hours)) if sum(hours) > 0.0 else None
+        return {"hour": peak, "last_seen": last}
 
     def snapshot(self) -> dict:
         """The current pattern of life, for the bus to persist during compaction."""
