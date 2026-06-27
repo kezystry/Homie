@@ -1,91 +1,91 @@
 # Homie launch-on-command app layer — the "open a fullscreen app from the TTY"
 # surface that the Layer 2 cockpit (and a bare `homie-watch` command) drive.
 #
-# Headless by design: there is NO desktop environment. Instead, a single
-# gamescope micro-compositor grabs the display on demand and hosts ONE fullscreen
-# client (Stremio now; Steam in Stage 4; the camera via mpv). gamescope owns DRM
-# master for the session, so app-exit returns cleanly to the console with no VT
-# thrash — the architecture the cockpit council settled on.
+# Headless by design: there is NO desktop environment and NO display manager, so
+# the box boots to the plain console. Apps are launched on demand:
 #
-# Everything here is cached on cache.nixos.org (no flaky CUDA download), so a
-# rebuild that adds this module needs only the reliable NVIDIA *driver*
-# (nvidia-cuda.nix with cuda off). That is what makes "movies first" possible
-# before the CUDA toolkit is sorted.
+#   * MOVIES (homie-watch): Stremio under a MINIMAL XORG session. We use X (not
+#     gamescope/Wayland) deliberately — on the RTX 3060 + driver 550, gamescope
+#     flickers/black-frames (NVIDIA's Wayland explicit-sync only arrived at 555,
+#     and 565 broke this display entirely). NVIDIA-under-X is the rock-solid path
+#     with none of that. Decided by council after a long bring-up.
+#   * GAMES (later, Stage 4): Steam/Proton via gamescope — kept enabled below.
+#   * CAMERA: mpv --vo=drm straight on the console (cockpit launcher).
+#
+# Everything here is cached on cache.nixos.org (no flaky CUDA download).
 #
 # Import by adding `./apps.nix` to the flake's module list.
 
 { lib, pkgs, ... }:
 
+let
+  # Openbox kiosk config: every window opens fullscreen + undecorated, so Stremio
+  # fills the TV with no titlebar and no way to lose the window. (class="*" is the
+  # catch-all match — Stremio is the only client in the session.)
+  openboxKiosk = pkgs.writeText "homie-openbox-rc.xml" ''
+    <?xml version="1.0" encoding="UTF-8"?>
+    <openbox_config xmlns="http://openbox.org/3.4/rc">
+      <applications>
+        <application class="*">
+          <decor>no</decor>
+          <maximized>yes</maximized>
+          <fullscreen>yes</fullscreen>
+          <focus>yes</focus>
+        </application>
+      </applications>
+    </openbox_config>
+  '';
+
+  # The X session script: kill screen-blanking, start a tiny WM for focus +
+  # forced-fullscreen, then exec Stremio as the sole client. When Stremio quits,
+  # the exec'd process ends, X tears down, and you're back at the console.
+  stremioXinit = pkgs.writeShellScript "homie-watch-xinit" ''
+    ${pkgs.xorg.xset}/bin/xset s off -dpms
+    ${pkgs.openbox}/bin/openbox --config-file ${openboxKiosk} &
+    exec ${pkgs.stremio}/bin/stremio
+  '';
+in
 {
-  # gamescope: the micro-compositor. capSysNice lets it raise scheduling priority
-  # for smooth playback; it is launched per-command, never a long-running session.
+  # gamescope kept for the Steam/Proton stage; it is NOT used for movies anymore.
   programs.gamescope = {
     enable = true;
     capSysNice = true;
   };
 
   # ---------------------------------------------------------------------------
-  # SEAT MANAGEMENT — what lets gamescope grab the display on a bare console.
-  #
-  # There is no desktop/display-manager here, so when gamescope launches from the
-  # auto-login TTY it has no "seat" (the permission to own the GPU + VT). Without
-  # one it dies with: "Could not connect to /run/seatd.sock", "failed to open
-  # seat", "Permission denied /dev/dri/cardN", "Could not open VT" -> segfault
-  # (exactly the Stage-2 first-run failure).
-  #
-  # seatd is a tiny standalone seat manager; gamescope's libseat tries it first.
-  # Enabling it (and putting `homie` in the seat + GPU/input groups) gives
-  # gamescope a seat without a full logind graphical session. Run apps as the
-  # plain `homie` user from the console — NOT via sudo, which breaks seat access.
-  #
-  # GROUP NAME GOTCHA (verified against the live box + the 24.11 module): the
-  # NixOS seatd module owns the socket as root:**seat** (mode 0660) and the group
-  # it creates is **"seat"**, NOT "seatd". Listing a nonexistent "seatd" group
-  # here is silently dropped (NixOS warns + skips), so the user never gets seat
-  # access and gamescope dies "Permission denied /run/seatd.sock". The group MUST
-  # be "seat".
+  # Minimal Xorg, started ON DEMAND via startx — there is NO display manager, so
+  # enabling this does NOT change the boot (the box still lands at the plain
+  # console). `startx.enable` provides xinit/startx and the console-user X
+  # wrapper; the NVIDIA X driver comes from `services.xserver.videoDrivers =
+  # [ "nvidia" ]` set in nvidia-cuda.nix. X and gamescope coexist fine — only one
+  # owns the display at a time (sequential), never both at once.
+  # ---------------------------------------------------------------------------
+  services.xserver.enable = true;
+  services.xserver.displayManager.startx.enable = true;
+
+  # ---------------------------------------------------------------------------
+  # Seat management for gamescope (Steam later) + DRM access for mpv-on-console.
+  # Group is "seat" (NOT "seatd" — the NixOS module owns the socket as root:seat).
   # ---------------------------------------------------------------------------
   services.seatd.enable = true;
   users.users.homie.extraGroups = [ "video" "render" "seat" "input" ];
 
   environment.systemPackages = with pkgs; [
-    mpv      # camera view (mpv --vo=drm) and a fallback media player
-    stremio  # the streaming front-end; the owner manages his own addons/accounts
-    ffmpeg   # cockpit camera: grabs single frames for the in-terminal thumbnail
+    mpv        # camera view (mpv --vo=drm) and a fallback media player
+    stremio    # the streaming front-end; the owner manages his own addons/accounts
+    openbox    # tiny WM that forces Stremio fullscreen in the X session
+    ffmpeg     # cockpit camera: grabs single frames for the in-terminal thumbnail
     v4l-utils  # `v4l2-ctl --list-formats-ext` to confirm a webcam speaks MJPEG
 
-    # `homie-watch` — the one-line "watch movies" command (plan Stage 2). Runs
-    # Stremio fullscreen under gamescope straight from the console. Extra args
-    # pass through to gamescope (e.g. `homie-watch -w 1920 -h 1080`).
-    #
-    # Guard rails learned at bring-up: gamescope opens the display through the
-    # caller's USER session, so it must run as `homie`, not root/sudo — as root
-    # there is no XDG_RUNTIME_DIR and it dies with "unable to open wayland
-    # socket". Refuse root early with a clear message, and fall back to the
-    # conventional runtime dir if a bare console login didn't export one.
+    # `homie-watch` — the one-line "watch movies" command. Runs Stremio fullscreen
+    # in a minimal X session straight from the console. Run as the `homie` user,
+    # not root/sudo (the console-user X wrapper expects a normal user).
     (writeShellScriptBin "homie-watch" ''
       if [ "$(id -u)" = 0 ]; then
-        echo "Run homie-watch as the 'homie' user, not via sudo/root —" >&2
-        echo "gamescope needs your user session (XDG_RUNTIME_DIR) to open the screen." >&2
+        echo "Run homie-watch as the 'homie' user, not via sudo/root." >&2
         exit 1
       fi
-      : "''${XDG_RUNTIME_DIR:=/run/user/$(id -u)}"
-      export XDG_RUNTIME_DIR
-      # NVIDIA proprietary on a bare TTY uses the GBM/DRM path; name the vendor
-      # explicitly so gamescope's Vulkan/GBM picks the NVIDIA ICD (harmless if the
-      # driver already auto-selects it).
-      export __GLX_VENDOR_LIBRARY_NAME=nvidia
-      export GBM_BACKEND=nvidia-drm
-      # Stremio's UI is QtWebEngine (Chromium). Nested under gamescope on NVIDIA:
-      #  - fully GPU-enabled  -> the GPU *process* fails -> BLACK window.
-      #  - fully --disable-gpu -> renders, but software compositing mis-repaints
-      #    (UI vanishes on hover).
-      # The sweet spot: keep GPU *rasterization* but run it IN-PROCESS (dodges the
-      # crashing GPU subprocess) and disable only the GPU *compositor*. Override
-      # by exporting HOMIE_STREMIO_FLAGS before running, for quick experiments.
-      export QTWEBENGINE_DISABLE_SANDBOX=1
-      export QTWEBENGINE_CHROMIUM_FLAGS="''${HOMIE_STREMIO_FLAGS:---in-process-gpu --disable-gpu-compositing --ignore-gpu-blocklist --no-sandbox}"
-      exec ${pkgs.gamescope}/bin/gamescope -f --backend drm "$@" -- ${pkgs.stremio}/bin/stremio
+      exec ${pkgs.xorg.xinit}/bin/startx ${stremioXinit} -- vt1
     '')
 
     # `homie` — open the Layer 2 cockpit (the curses control plane: chat with the
