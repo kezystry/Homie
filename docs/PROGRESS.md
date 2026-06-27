@@ -5,9 +5,9 @@ the **what & why**; this file is the **how it's going**. Updated every time a mi
 lands or a decision is taken.*
 
 - **Branch:** `claude/homie-overview-bo4l8v`
-- **Tests:** 338 passing (`python3 -m unittest discover -s tests`) — green on every push
-- **Last updated:** 2026-06-27, after **M6** (serving discipline) + the **Home Assistant
-  adapter** (the real hand) + the GIST v2 memory format; M7 next
+- **Tests:** 366 passing (`python3 -m unittest discover -s tests`) — green on every push
+- **Last updated:** 2026-06-27, after **M6** (serving discipline), the **Home Assistant adapter**
+  (+ audit fixes NEW-1/2/10), and **GIST slice 2** (the integer STATE core, ratified). M7 in progress.
 
 > **Updating the Homie box.** The box runs a git checkout at `/opt/homie`; update with
 > `python3 scripts/update.py` (pulls + runs the suite as a health check, reports safe/not),

@@ -5,6 +5,46 @@ brainstorm (16 expert critics + 4 red-teamers + a synthesis chair). The chair ch
 claim against the real `core/remember.py`, so the fixes below trace to actual lines of code,
 not prose. Status: **decided design (v2), not yet built.***
 
+> ## ⚖️ Ratification status — read this first (v2.1, binding)
+> A 7-agent ratification panel (determinism, crypto/DP, Bayesian, edge, HCI, scope-hawk + chair)
+> reviewed this spec against the real code and returned **ratified-with-amendments**. The
+> amendments below are **binding** and override any contradicting prose later in this file.
+> Full verdict: [`docs/audits/2026-06-27-gist-ratification.md`](audits/2026-06-27-gist-ratification.md).
+>
+> 1. **GIST does NOT derive from `remember.py` and the two are NOT guaranteed equal.** GIST is
+>    an **independent integer estimator** folded over the *same raw event stream*. It shares
+>    only the **half-life constant (30d)** — not `remember.py`'s float arithmetic, not its
+>    values. The old "derives from the snapshot, never recomputes, so the two can't drift" claim
+>    is **false** (`remember.py` carries no Beta, no `present_days`, no EW moments, no day-type
+>    axis) and is struck. Replace it with a **bounded-tolerance reconciliation test** (GIST
+>    day-mass tracks `remember._days` within rounding).
+> 2. **No float crosses the `§S` boundary.** The only admissible float is event ingest
+>    (continuous `ts` → integer night / daypart / minute bucket). Decay, Beta, EW moments,
+>    firmness, delta-coding, HMAC are **pure integer**. Time `t` for `(W,S1,S2)` is
+>    **local-midnight-minutes ∈ [0,1439]**, not epoch-seconds (epoch-seconds makes
+>    `σ²=S2/W−μ²` a precision-dead subtraction of ~1e21 integers). Firmness is integer
+>    **`bit_length`**, never `math.log2` (a libm float in the signed body breaks the HMAC).
+> 3. **Decay operator is pinned.** `decay_q(state_q, nights)` = banker's-rounded
+>    `state_q · 2^(−nights/30)` computed under a **fixed `decimal` context** (`ROUND_HALF_EVEN`),
+>    not host floats. See `core/gist.py`.
+> 4. **G3 is replay-idempotence, NOT associativity.** "Fold A then B == fold A+B once" is
+>    **false** under once-per-night rounding (two roundings ≠ one). G3 = "re-folding the same
+>    nightly sequence from persisted state yields byte-identical output."
+> 5. **Crypto fixed for stdlib reality.** Neither Argon2id nor AES-GCM is in the stdlib.
+>    At-rest confidentiality = **LUKS/dm-crypt**; password KDF = **`hashlib.scrypt`**
+>    (n=2¹⁵,r=8,p=1); noise seed via **hand-rolled HKDF-SHA256 (RFC 5869)**; in-Python crypto =
+>    **HMAC-SHA256 over the canonical integer STATE bytes only**. Panic-wipe shreds key
+>    material + scrypt salt + budget ledger; "reversible" = re-derive-from-password, **not**
+>    recover-wiped-data.
+> 6. **OFF-fence at perception ingest, not only at render** — mum-flat events must never enter
+>    `remember.model`, or the clean in-memory stats the gate reads contain off-limits data.
+> 7. **Deferred out of the first build** (kept forward-compatible, not built yet): all DP
+>    machinery (eps/rho is *advisory noise*, not a guarantee, until a sensitivity table exists),
+>    two-rate consolidation + change-point, RARE/DUE/anomaly reservoir, transition stats, the
+>    German catalog, and `memory.overlay`. Build the deterministic integer core green first.
+>
+> The ordered, sliced **build plan** is at the end of this file under *Ratified build order*.
+
 ## The idea (one line)
 Don't store a household's events — store the **sufficient statistics of its recurring
 behaviour** as an exact, integer, decayed state, and *render* that state into a tiny
@@ -159,11 +199,20 @@ the day's seed, re-sign; `parse(render(state))==state` byte-for-byte.
   no vector DB. For hot paths, pre-filter to the live section + all rules + due/rare + recent anomalies.
 - The **novelty-gate and tiles never read the `.ddn`** — they query the clean, full-precision
   in-memory stats in `core/remember.py` (which never leave the box, so they carry no privacy cost).
-  GIST *derives* from that snapshot; it never recomputes it independently, so the two can't drift.
+  **GIST is an INDEPENDENT integer estimator** folded nightly over the *same raw events*; it shares
+  the 30d half-life **constant** but not `remember.py`'s float arithmetic or values. The two **MAY
+  drift within a bounded tolerance**; a **reconciliation CI test** asserts GIST day-mass tracks
+  `remember._days` within rounding — never an equality claim. GIST never feeds `remember.observe`
+  and is never read by the gate/tiles. *(v2.1 amendment — supersedes the struck "derives, never
+  recomputes, can't drift" claim.)*
 
 ## Privacy & encryption (structural, not bolted on)
-- At rest: key from the owner's password (**Argon2id/scrypt → AES-GCM**), sealed in LUKS.
-  **Password-reversible** ("lock, don't lose"); the HMAC authenticates the **state**.
+- At rest: confidentiality via **LUKS/dm-crypt** (the `.ddn` lives on the encrypted volume).
+  Password KDF = **`hashlib.scrypt`** (n=2¹⁵,r=8,p=1, salt+params pinned in the header); the noise
+  seed via **hand-rolled HKDF-SHA256 (RFC 5869)**; the in-Python crypto surface is **HMAC-SHA256
+  over the canonical integer STATE bytes only**. **Password-reversible** = re-derive-from-password,
+  **not** recover-wiped-data; panic-wipe shreds key material + scrypt salt + the budget ledger.
+  *(v2.1 amendment — neither Argon2id nor AES-GCM is in the stdlib; the old line was unbuildable.)*
 - The format **cannot hold** a raw face/audio/image/free-text identifier — identity appears only
   as enrolled household **labels**.
 - **Fenced spaces:** a zone with no glyph (listed under `OFF:`) is **unrepresentable** — mum's
@@ -224,3 +273,40 @@ the day's seed, re-sign; `parse(render(state))==state` byte-for-byte.
 - **Day-type detection is now load-bearing** and inherits whatever blind spots `remember.py`'s
   presence has; a flapping presence sensor could misclassify a day. The symmetric-absence fix and
   `nmin` floor blunt the damage, but it deserves its own reliability test.
+
+## Ratified build order (v2.1 — the panel's sliced plan)
+Each slice is independently testable, stdlib-only, suite-green. Slice 1 touches only `remember.py`;
+the integer core (slices 2–3) is built in **complete isolation** — zero crypto, zero noise, zero
+`remember.py` coupling — so the determinism gates go green before anything is layered on.
+
+1. **`remember.py` — `present_days` (no new file).** Fix the real *P(happens) > 1.0* bug
+   (`remember.py:86` counts every event in the numerator). Add a decayed `present_days` mass,
+   decayed by the **identical** factor at the **same point** as `_days`; expose it on
+   `Expectation`; bump `SNAPSHOT_VERSION 2→3` with a rate-preserving migration. CI: confidence
+   `= present_days/_days ∈ [0,1]`. **⚠ Open design question — see the handoff.**
+2. **`core/gist.py` — integer STATE in isolation.** Fixed-point stat objects (Beta `a_q/b_q`,
+   EW moments `W/S1/S2` with `t`=midnight-minutes, day-mass, all ×1000); the pinned
+   `decay_q(state_q, nights)`; firmness via integer `bit_length`. **G1**: `state→bytes→state`
+   identity on a fuzz corpus.
+3. **`core/gist.py` — `§S` varint zigzag-delta codec.** Reference frame fully pinned
+   (canonical-key total order, missing-prior ⇒ delta-vs-zero, fixed field order, varint
+   convention). **G3** (replay-idempotence).
+4. **Typed canonical key + day-type + renderer/parser.** `(kind, daytype, daypart, sorted(tokens))`;
+   deterministic calendar+presence `{wd,we,aw}` with pinned debounce; canonical-Huffman legend with
+   **ASCII-bytewise** tie-break; glyph VIEW render. **G2** (byte-identical across `LANG=C`,
+   `de_DE.UTF-8`, randomized `PYTHONHASHSEED`) + a day-type flap-resistance test.
+5. **Absence-counted Beta fold + `nmin` floor + MDL prune (hard ceiling) + OFF-fence** (writer-reject
+   **and** at perception ingest). Still plaintext, no HMAC.
+6. **Prose BRIEF renderer** (English) with a TOTAL `(mean,firmness)→word` function, thresholds
+   pinned in the header, the number revealable on demand.
+7. **Wire into `ritual.consolidate()`** in the always-run block **before** `bus.compact()` and
+   **before** the abort gate; fsync `.ddn` (temp+atomic rename) before rotating raw; crash test.
+   Add the reconciliation test.
+8. **HMAC-SHA256** over the canonical integer STATE bytes (stdlib `hmac`).
+9. **Later milestones, each independently shippable behind already-pinned header flags:** scrypt KDF
+   + HKDF + panic-wipe key-shred → DP noise (only once a sensitivity table exists; ship as advisory)
+   → two-rate + change-point → RARE/DUE/anomaly reservoir → transition stats → German catalog →
+   `memory.overlay`.
+
+**Deferred (kept forward-compatible, not built yet):** all DP machinery, two-rate consolidation,
+RARE/DUE/anomaly reservoir, transition stats, German catalog, `memory.overlay`, in-Python AEAD.
