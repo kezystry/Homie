@@ -121,6 +121,12 @@ class Daemon:
         await self.consent.start()
         await self.act.start()
         self.reconciler.attach(self.home)     # human state-changes -> friction
+        # The home is a managed seam: a real adapter (HA WebSocket) runs a background
+        # connection loop, started AFTER its handler is attached so no echo is missed.
+        # LoggingHome / test fakes have no start(), so this is a no-op for them.
+        home_start = getattr(self.home, "start", None)
+        if callable(home_start):
+            await home_start()
         await self.sup.start_all()            # tiles subscribe (evaluators)
         await self.clock.start()              # the heartbeat: tick.* + the timer seam
         await self.reason.start()             # the proposer (real or null)
@@ -193,6 +199,9 @@ class Daemon:
             await self.cockpit.stop()
         if self.mesh is not None:
             await self.mesh.stop()
+        home_stop = getattr(self.home, "stop", None)
+        if callable(home_stop):
+            await home_stop()
         await self.act.stop()
         await self.consent.stop()
         await self.bus.aclose()

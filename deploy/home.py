@@ -32,10 +32,20 @@ class LoggingHome:
 
 
 def home_from_env():
-    """Construct the HomeClient from the environment. Returns the real adapter once
-    it exists; for now a LoggingHome (with a warning if HOMIE_HOME_URL is set)."""
+    """Construct the HomeClient from the environment.
+
+    With both HOMIE_HOME_URL (HA's WebSocket endpoint, e.g.
+    ``ws://mini-pc.local:8123/api/websocket``) and HOMIE_HOME_TOKEN (a long-lived access
+    token created in HA → Profile → Security) set, returns the real `HomeAssistantClient`
+    that drives DIRIGERA/Tradfri through Home Assistant. Otherwise a `LoggingHome`, so the
+    whole graph still runs on a box with no HA wired yet."""
     url = os.environ.get("HOMIE_HOME_URL")
-    if url:
-        log.warning("HOMIE_HOME_URL=%s set, but the MQTT/HA adapter is not built yet; "
-                    "using LoggingHome (no physical actuation)", url)
+    token = os.environ.get("HOMIE_HOME_TOKEN")
+    if url and token:
+        from core.ha import HomeAssistantClient, WebSocketHAConnection
+        log.info("home: Home Assistant adapter -> %s", url)
+        return HomeAssistantClient(lambda: WebSocketHAConnection(url), token)
+    if url and not token:
+        log.warning("HOMIE_HOME_URL=%s set but HOMIE_HOME_TOKEN missing; using LoggingHome "
+                    "(no physical actuation). Create a long-lived token in HA and set it.", url)
     return LoggingHome()
