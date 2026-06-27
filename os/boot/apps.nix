@@ -76,13 +76,15 @@
       # driver already auto-selects it).
       export __GLX_VENDOR_LIBRARY_NAME=nvidia
       export GBM_BACKEND=nvidia-drm
-      # Stremio's UI is QtWebEngine (Chromium). Nested under gamescope on NVIDIA
-      # its GPU compositor fails and the window renders BLACK (cursor visible, no
-      # UI). Disabling Chromium's GPU path makes the (lightweight) UI render in
-      # software; actual video playback uses Stremio's separate mpv/NVDEC path, so
-      # picture quality and hardware decode are unaffected.
+      # Stremio's UI is QtWebEngine (Chromium). Nested under gamescope on NVIDIA:
+      #  - fully GPU-enabled  -> the GPU *process* fails -> BLACK window.
+      #  - fully --disable-gpu -> renders, but software compositing mis-repaints
+      #    (UI vanishes on hover).
+      # The sweet spot: keep GPU *rasterization* but run it IN-PROCESS (dodges the
+      # crashing GPU subprocess) and disable only the GPU *compositor*. Override
+      # by exporting HOMIE_STREMIO_FLAGS before running, for quick experiments.
       export QTWEBENGINE_DISABLE_SANDBOX=1
-      export QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu --disable-gpu-compositing --no-sandbox --ignore-gpu-blocklist"
+      export QTWEBENGINE_CHROMIUM_FLAGS="''${HOMIE_STREMIO_FLAGS:---in-process-gpu --disable-gpu-compositing --ignore-gpu-blocklist --no-sandbox}"
       exec ${pkgs.gamescope}/bin/gamescope -f --backend drm "$@" -- ${pkgs.stremio}/bin/stremio
     '')
 
