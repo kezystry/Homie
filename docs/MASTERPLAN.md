@@ -729,12 +729,67 @@ audio rides the **same** `interface.say` events later without redesign.
 
 ---
 
+## Second-review addendum (2026-06-27)
+
+A second independent Claude reviewed **`main`** (the pre-keystone codebase) and the full
+memo is at `docs/audits/2026-06-27-second-review.md`. It confirmed the first audit's core and
+the keystone, and added eleven findings. How they slot in:
+
+- **Already closed on this branch:** the `run.py`/`spine_demo` divergence + missing Act/
+  reconciler (the reviewer's "one thing") — **M1**; C4 attach-order — **M1** (plus the
+  one-tick commit defer the reviewer's note didn't anticipate); self-heal now has a production
+  caller via `consolidate()` in `_housekeep` (N2) — **M1**; a golden-days corpus (N-brainstorm
+  #1) — **M2** (`core/scenarios.py`).
+- **New, scheduled below as M2.5 (the clock):** N1 (no scheduler/tick), N4 (hardcoded dusk).
+- **Folded into existing milestones:** N3 (emit bypass also hits SubprocessChannel + is
+  unattributable; capability token must be **topic-scoped**) → **M5**; N5 (echo exact-match
+  mislearns dimming transitions → tolerance band) → **M5-adjacent**; N6 (friction wall-clock
+  breaks replay determinism) + N7 (three "hour" notions; set `HOMIE_TZ` in the unit) →
+  **M2.5/M5** clock-domain unification; N10 (Consent is a 30s dead-end — needs a cockpit Y/N
+  `confirm.response` producer) → **M8**; N9 (split daemon/login users, SSH behind WireGuard) →
+  **M9**; N8 + N11 (mesh single-hop contradicts the star topology; out-of-order decay skew) →
+  **§5** evidence that the mesh as drawn doesn't even work — *answer "why three nodes" first*.
+- **Brainstorm adopted into the roadmap:** confidence-gated autonomy via `Expectation.days`
+  (#5), rhythm fingerprinting + stranger-by-behavior (#6/#7, the security pillar's first rung
+  before any faceprint), the cockpit "why" pane (#12, extends M8's Friction Ledger), a panic/
+  privacy hard switch at `assert_emittable` (#13), the three-tier model cascade (#14, refines
+  M6), and threading Remember context into the **cortex** chat path (a real bug — M0's anchor
+  already answers from Remember, the cortex path does not).
+
+### M2.5 — Time as a first-class event: the clock the system lacks · [days]
+
+**Goal.** Give Homie a heartbeat. Today it is purely event-reactive: every "after N minutes /
+at dusk / each morning" behavior secretly depends on an *unrelated* future event arriving — and
+in a genuinely empty room none does, so the lighting auto-off never fires (N1). This is
+structural, not a tile bug, and it underlies auto-off, security cool-downs, and dusk (N4).
+
+**Tasks.**
+- A stdlib `Clock` producer (new `core/clock.py`) wired in `build_daemon`: emits `tick.minute`/
+  `tick.hour` and serves a `timer.set(after=…)` → `timer.fired` seam so a tile can schedule
+  future work without polling. Injectable time source so tests stay deterministic.
+- Solar `sun.dusk`/`sun.dawn` events from the home's lat/long (a ~30-line stdlib sun-position
+  calc — no deps); Lighting subscribes instead of hardcoding 18:00 (N4).
+- Unify the clock domain (start): set `HOMIE_TZ` in the systemd unit and centralize hour-of-day
+  on the one pinned zone so Remember, Lighting, and `learn.py` can't disagree (N7); begin
+  threading an event-derived time through the friction path so it's replay-deterministic (N6).
+- Rework Lighting's auto-off to a `timer.set` on vacancy (fires even in a silent room).
+
+**Acceptance.**
+- `tests/test_clock.py::test_timer_fires_in_empty_room` — arm an auto-off via `timer.set`; with
+  NO further zone events, `timer.fired` arrives and the light goes off (the exact N1 bug).
+- `tests/test_sun.py::test_dusk_tracks_latitude` — dusk for a summer vs winter date at ~54°N
+  differs by hours; Lighting's dark-gate follows it, not a constant.
+
+**Unblocks.** Auto-off, cool-downs, dusk, "each morning" behaviors, and the dream-note cadence —
+all the time-shaped behavior the rest of the plan assumes exists.
+
 ## Sequence at a glance
 
 ```
 M0  [hours]      Pi-anchor chat fallback (never silent)            → proof-of-life
 M1  [days]       KEYSTONE: build_daemon + contract/golden tests    → C1, C4, C13(in-proc)
 M2  [days]       Synthetic-perception harness + Perceive.run       → C11 intake; test substrate
+M2.5[days]       The clock: tick/timer + solar dusk                → N1, N4 (time passing)
 M3  [days]       Wake telemetry → calibrate → enforced budget      → C8; topology input
 M4  [days]       Hour-shaped lesson, spoken back                   → first goosebumps
 M5  [weeks]      Capability-gated act path                         → C2, C14
