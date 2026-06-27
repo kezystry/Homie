@@ -59,7 +59,7 @@ class LightingTests(unittest.IsolatedAsyncioTestCase):
             await bus.publish(Event("presence.arrived", at(21), {"zone": "living"}))
             await bus.drain()
             self.assertEqual(len(acts), 1)
-            self.assertEqual(acts[0].payload["actuator"], "light.living")
+            self.assertEqual(acts[0].payload["actuator"], "light.living_room")
             self.assertEqual(acts[0].payload["value"], {"state": "on"})
             self.assertEqual(acts[0].payload["priority"], "ambient")
             await bus.aclose()
@@ -100,7 +100,7 @@ class LightingTests(unittest.IsolatedAsyncioTestCase):
         with TemporaryDirectory() as d:
             root = Path(d)
             bus, sup, acts = await self._sup(root)
-            ref = ActionRef("x", "lighting", "light.living", {"state": "on"}, at(21))
+            ref = ActionRef("x", "lighting", "light.living_room", {"state": "on"}, at(21))
             await sup.deliver_friction(
                 FrictionSignal(kind="reversal", at=at(21), target_tile="lighting",
                                reverses=ref, zone="living", actor="owner")
@@ -114,7 +114,7 @@ class LightingTests(unittest.IsolatedAsyncioTestCase):
         with TemporaryDirectory() as d:
             root = Path(d)
             bus, sup, acts = await self._sup(root)
-            ref = ActionRef("x", "lighting", "light.living", {"state": "on"}, at(21))
+            ref = ActionRef("x", "lighting", "light.living_room", {"state": "on"}, at(21))
             await sup.deliver_friction(
                 FrictionSignal(kind="reversal", at=at(21), target_tile="lighting",
                                reverses=ref, zone="living", actor="guest_visitor")
@@ -142,7 +142,7 @@ class LightingTests(unittest.IsolatedAsyncioTestCase):
             await bus.publish(Event("timer.fired", 1601.0, {"key": "lighting.off.living", "data": {"room": "living"}}))
             await bus.drain()
             self.assertEqual(len(acts), 1)
-            self.assertEqual(acts[0].payload["actuator"], "light.living")
+            self.assertEqual(acts[0].payload["actuator"], "light.living_room")
             self.assertEqual(acts[0].payload["value"], {"state": "off"})
             await bus.aclose()
 
@@ -195,14 +195,14 @@ class LightingTests(unittest.IsolatedAsyncioTestCase):
             root = Path(d)
             bus, sup, acts = await self._sup(root)
             home = FakeHome()
-            act = Act(bus, home, CommandLog(), ActMap.from_forward({"light.living": "light.lr"}), hold_window=1e9)
+            act = Act(bus, home, CommandLog(), ActMap.from_forward({"light.living_room": "light.lr"}), hold_window=1e9)
             await act.start()
             # the tile asks for ambient light...
             await bus.publish(Event("presence.arrived", at(21), {"zone": "living"}))
             await bus.drain()
             # ...then a SECURITY decision wants it off on the same bulb
             await bus.publish(Event("actuator.requested", time.time(),
-                                    {"actuator": "light.living", "value": {"state": "off"},
+                                    {"actuator": "light.living_room", "value": {"state": "off"},
                                      "tile": "security", "priority": "security"}))
             await bus.drain()
             self.assertEqual(home.driven[-1], ("light.lr", {"state": "off"}))  # security wins arbitration

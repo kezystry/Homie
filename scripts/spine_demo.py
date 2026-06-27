@@ -51,13 +51,13 @@ def at(hour: int, day: int = 13) -> float:
 async def main() -> None:
     home = FakeHome()
     # The same assembler production uses; we differ only by injection: a FakeHome,
-    # a test act-map (light.living -> the home's light.lr entity), ephemeral state.
+    # a test act-map (light.living_room -> the home's light.lr entity), ephemeral state.
     state = Path(tempfile.mkdtemp(prefix="homie-demo-"))
     config = DaemonConfig(
         state=state,
         housekeep=False,  # the demo drives time by hand
         compact_threshold=0,
-        act_map=ActMap.from_forward({"light.living": "light.lr"}),
+        act_map=ActMap.from_forward({"light.living_room": "light.lr"}),
     )
     daemon = build_daemon(home, None, config=config)
 
@@ -102,7 +102,7 @@ async def main() -> None:
     print("   (echo suppressed by the canonicalizer — not mistaken for a human action)")
 
     print("5) You switch it off (friction) — Lighting learns to stay dark at this hour:")
-    ref = ActionRef("demo", "lighting", "light.living", {"state": "on"}, at(21))
+    ref = ActionRef("demo", "lighting", "light.living_room", {"state": "on"}, at(21))
     await daemon.sup.deliver_friction(
         FrictionSignal(kind="reversal", at=at(21), target_tile="lighting",
                        reverses=ref, zone="living", actor="owner"))

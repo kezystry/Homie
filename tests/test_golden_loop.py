@@ -52,7 +52,7 @@ class GoldenLoopTests(unittest.TestCase):
                 state=tmp,
                 housekeep=False,
                 compact_threshold=0,
-                act_map=ActMap.from_forward({"light.living": "light.lr"}),
+                act_map=ActMap.from_forward({"light.living_room": "light.lr"}),
             )
             daemon = build_daemon(home, None, config=config)
             done: list = []
@@ -72,13 +72,13 @@ class GoldenLoopTests(unittest.TestCase):
                 await home.emit("light.lr", value)
                 await daemon.bus.drain()
                 self.assertTrue(
-                    any(e.payload.get("actuator") == "light.living" for e in done),
+                    any(e.payload.get("actuator") == "light.living_room" for e in done),
                     "the echo of Homie's own command must be confirmed as actuator.done, "
                     "not read as a human reversal (StateReconciler wired)",
                 )
 
                 # 3) a human reversal -> friction teaches Lighting to stay dark at this hour
-                ref = ActionRef("test", "lighting", "light.living", {"state": "on"}, at(21))
+                ref = ActionRef("test", "lighting", "light.living_room", {"state": "on"}, at(21))
                 await daemon.sup.deliver_friction(
                     FrictionSignal(kind="reversal", at=at(21), target_tile="lighting",
                                    reverses=ref, zone="living", actor="owner"))

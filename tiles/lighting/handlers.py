@@ -22,6 +22,15 @@ DARK_BEFORE = 7  # ...and dawn (used only when no HOMIE_LAT/HOMIE_LON is configu
 OFF_WINDOW = 600.0  # seconds a room must stay empty before the light auto-offs
 NEVER_AUTO_ON = {"bedroom"}  # request-only rooms (sleeping != wanting the light on)
 
+# Zone -> actuator alias. Presence zones are short ("living"), but the home's actuator (and
+# the act-map) is "light.living_room" (C14). Decoupling here keeps zone names untouched
+# while the manifest/act-map agree on one actuator name. Unlisted zones map 1:1.
+ROOM_ACTUATOR = {"living": "light.living_room"}
+
+
+def _actuator(room: str) -> str:
+    return ROOM_ACTUATOR.get(room, f"light.{room}")
+
 
 def _hour(ts: float) -> int:
     return datetime.fromtimestamp(ts).hour
@@ -74,7 +83,7 @@ class Lighting(Tile):
 
     async def _maybe_on(self, event: Event, ctx: Context) -> None:
         room = event.payload.get("zone")
-        if not room or f"light.{room}" not in ctx.manifest.actuators:
+        if not room or _actuator(room) not in ctx.manifest.actuators:
             return  # a security-only zone (e.g. approach) or an unlit room
         if room in NEVER_AUTO_ON:
             return  # request-only; light_room() is the only path on
@@ -83,11 +92,11 @@ class Lighting(Tile):
         suppressed = self.state.get("suppressed", {}).get(room, [])
         if _hour(event.ts) in suppressed:
             return  # friction taught it not to auto-light this room at this hour
-        await ctx.act(f"light.{room}", {"state": "on"})
+        await ctx.act(_actuator(room), {"state": "on"})
 
     async def _maybe_off(self, event: Event, ctx: Context) -> None:
         room = event.payload.get("zone")
-        if not room or f"light.{room}" not in ctx.manifest.actuators:
+        if not room or _actuator(room) not in ctx.manifest.actuators:
             return
         armed = self._armed()
         if event.payload.get("occupied", False):
@@ -108,13 +117,13 @@ class Lighting(Tile):
         if not room or event.payload.get("key") != _off_key(room):
             return  # not our auto-off timer
         self._armed().discard(room)
-        if f"light.{room}" in ctx.manifest.actuators:  # still ours to control
-            await ctx.act(f"light.{room}", {"state": "off"})
+        if _actuator(room) in ctx.manifest.actuators:  # still ours to control
+            await ctx.act(_actuator(room), {"state": "off"})
 
     async def light_room(self, ctx: Context, room: str, on: bool) -> None:
         """Explicit request — bypasses the after-dark and request-only gates (this is
         the only way to light the bedroom). Still routed through ctx.act, so it is
         permission-checked and ledgered for friction attribution."""
-        actuator = f"light.{room}"
+        actuator = _actuator(room)
         if actuator in ctx.manifest.actuators:
             await ctx.act(actuator, {"state": "on" if on else "off"})
