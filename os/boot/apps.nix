@@ -37,9 +37,16 @@
   # Enabling it (and putting `homie` in the seat + GPU/input groups) gives
   # gamescope a seat without a full logind graphical session. Run apps as the
   # plain `homie` user from the console — NOT via sudo, which breaks seat access.
+  #
+  # GROUP NAME GOTCHA (verified against the live box + the 24.11 module): the
+  # NixOS seatd module owns the socket as root:**seat** (mode 0660) and the group
+  # it creates is **"seat"**, NOT "seatd". Listing a nonexistent "seatd" group
+  # here is silently dropped (NixOS warns + skips), so the user never gets seat
+  # access and gamescope dies "Permission denied /run/seatd.sock". The group MUST
+  # be "seat".
   # ---------------------------------------------------------------------------
   services.seatd.enable = true;
-  users.users.homie.extraGroups = [ "video" "render" "seatd" "input" ];
+  users.users.homie.extraGroups = [ "video" "render" "seat" "input" ];
 
   environment.systemPackages = with pkgs; [
     mpv      # camera view (mpv --vo=drm) and a fallback media player
@@ -64,7 +71,12 @@
       fi
       : "''${XDG_RUNTIME_DIR:=/run/user/$(id -u)}"
       export XDG_RUNTIME_DIR
-      exec ${pkgs.gamescope}/bin/gamescope -f "$@" -- ${pkgs.stremio}/bin/stremio
+      # NVIDIA proprietary on a bare TTY uses the GBM/DRM path; name the vendor
+      # explicitly so gamescope's Vulkan/GBM picks the NVIDIA ICD (harmless if the
+      # driver already auto-selects it).
+      export __GLX_VENDOR_LIBRARY_NAME=nvidia
+      export GBM_BACKEND=nvidia-drm
+      exec ${pkgs.gamescope}/bin/gamescope -f --backend drm "$@" -- ${pkgs.stremio}/bin/stremio
     '')
 
     # `homie` — open the Layer 2 cockpit (the curses control plane: chat with the
