@@ -5,8 +5,15 @@ the **what & why**; this file is the **how it's going**. Updated every time a mi
 lands or a decision is taken.*
 
 - **Branch:** `claude/homie-overview-bo4l8v`
-- **Tests:** 271 passing (`python3 -m unittest discover -s tests`) — green on every push
+- **Tests:** 280 passing (`python3 -m unittest discover -s tests`) — green on every push
 - **Last updated:** 2026-06-27, after M4; M5 in flight (capability panel)
+
+> **Live status page.** This board is the source-of-truth prose; for an at-a-glance page
+> that regenerates itself, run `python3 scripts/status.py` (writes `status.html` — open it
+> any time) or `python3 scripts/status.py --serve` for an auto-refreshing live URL. It
+> gathers everything fresh from git + disk: milestone board, branch, recent commits, an
+> optional live test run (`--tests`), and — if a daemon state dir is present — the event
+> log's activity and the lessons Homie has actually learned.
 
 ---
 
