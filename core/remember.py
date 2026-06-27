@@ -14,6 +14,7 @@ consume this; thresholds/policy live in the caller.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
 import os
@@ -193,6 +194,19 @@ class Remember:
         self.model = PatternModel(tz=os.environ.get("HOMIE_TZ"))  # pin the home's zone if set
 
     async def record(self, event: Event) -> None:
+        # Evaluate-then-commit (C4): anomaly evaluators (Security, Reason) must judge
+        # an event against history WITHOUT it, or the event masks its own novelty.
+        # TWO things guarantee that and BOTH are needed:
+        #   1. Remember attaches to the bus LAST (after the tiles) — see build_daemon —
+        #      so for a given event its drain task is scheduled after the evaluators'.
+        #   2. We defer the actual commit by one event-loop tick. An evaluator runs
+        #      through the tile channel, whose `asyncio.wait_for` yields the loop; that
+        #      yield would otherwise let this observe land *before* the evaluator's
+        #      `ctx.recall` reads the model. The one-tick defer keeps the commit behind
+        #      the (synchronous-to-recall) in-process evaluators.
+        # This is a one-tick ordering nicety, NOT a two-phase bus barrier (the audit's
+        # anti-goal): drain() still waits for the commit, so post-drain state is intact.
+        await asyncio.sleep(0)
         self.model.observe(event)
 
     async def normal(self, topic: str, zone: str | None, when: float) -> Expectation:

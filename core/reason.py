@@ -116,6 +116,17 @@ class LLMClient(Protocol):
     async def propose(self, *, system: str, context: dict, tools: list[dict]) -> Proposal: ...
 
 
+class NullLLMClient:
+    """The no-cortex stand-in: proposes nothing, ever. Injected by `build_daemon`
+    on the Pi anchor (no `HOMIE_LLM_URL`) so the proposer path is wired and tested
+    EVERYWHERE — the only difference between the anchor and the desktop is whether a
+    real model ever answers, never whether the code path exists. This is what keeps
+    production from having a Reason path that no test exercises (the C1 trap)."""
+
+    async def propose(self, *, system: str, context: dict, tools: list[dict]) -> Proposal:
+        return Proposal()
+
+
 def should_wake(exp) -> bool:
     """The novelty gate: a pure, cheap predicate over Remember's Expectation. True
     only when the moment is novel or rare — so the LLM is the exception path, not
