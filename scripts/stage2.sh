@@ -20,6 +20,16 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
+# Stage new/modified config so the git-tree flake build can see it.
+nixos_git_add() {
+  if command -v git >/dev/null 2>&1; then
+    git -C "$NIXOS" add -A
+  else
+    nix --extra-experimental-features 'nix-command flakes' \
+      shell nixpkgs#git --command git -C "$NIXOS" add -A
+  fi
+}
+
 echo ""
 echo "== Stage 2: movies first (driver + gamescope + Stremio) =="
 
@@ -53,6 +63,7 @@ else:
     raise SystemExit("   flake.nix: no anchor to insert ./apps.nix — add it by hand")
 PY
 
+nixos_git_add
 NIX_CONFIG="experimental-features = nix-command flakes" \
   nixos-rebuild switch --flake "$NIXOS#homie"
 echo "   rebuild complete"

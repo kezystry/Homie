@@ -25,6 +25,19 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
+# /etc/nixos is a git repo, and a flake build only copies GIT-TRACKED files into
+# the store — a freshly cp'd module is invisible until staged. Stage everything
+# before each rebuild. git isn't on PATH until this stage installs it, so fall
+# back to a throwaway nix shell.
+nixos_git_add() {
+  if command -v git >/dev/null 2>&1; then
+    git -C "$NIXOS" add -A
+  else
+    nix --extra-experimental-features 'nix-command flakes' \
+      shell nixpkgs#git --command git -C "$NIXOS" add -A
+  fi
+}
+
 echo ""
 echo "== Stage 0: brain alive + remote management =="
 
@@ -69,6 +82,10 @@ elif "./nvidia-cuda.nix" in s:
 else:
     raise SystemExit("   flake.nix: could not find an anchor to insert ./ssh.nix — add it by hand")
 PY
+
+# Stage the new/modified config so the flake build can see ssh.nix (git-tree
+# flakes ignore untracked files).
+nixos_git_add
 
 # The base install ships with flakes off. nixos-rebuild has no flag for that, so
 # enable the feature via NIX_CONFIG for this first rebuild. ssh.nix turns it on

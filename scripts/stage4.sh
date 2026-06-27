@@ -17,6 +17,15 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
+nixos_git_add() {
+  if command -v git >/dev/null 2>&1; then
+    git -C "$NIXOS" add -A
+  else
+    nix --extra-experimental-features 'nix-command flakes' \
+      shell nixpkgs#git --command git -C "$NIXOS" add -A
+  fi
+}
+
 echo ""
 echo "== Stage 4: Steam + Proton =="
 
@@ -43,6 +52,7 @@ else:
     raise SystemExit("   flake.nix: no anchor to insert ./steam.nix — add it by hand")
 PY
 
+nixos_git_add
 nixos-rebuild switch --flake "$NIXOS#homie"
 
 echo ""
