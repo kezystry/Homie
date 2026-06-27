@@ -34,5 +34,12 @@
     (writeShellScriptBin "homie-watch" ''
       exec ${pkgs.gamescope}/bin/gamescope -f "$@" -- ${pkgs.stremio}/bin/stremio
     '')
+
+    # `homie` — open the Layer 2 cockpit (the curses control plane: chat with the
+    # brain, watch status, launch apps). Works at the console and over SSH.
+    (writeShellScriptBin "homie" ''
+      cd /opt/homie || exit 1
+      exec ${pkgs.python311}/bin/python3 -m cockpit "$@"
+    '')
   ];
 }
