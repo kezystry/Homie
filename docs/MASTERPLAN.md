@@ -497,6 +497,65 @@ it manufactures false confidence. Only after M5 (capability), M7 (positive schem
 
 ---
 
+### M11 — Nightly self-refresh: the home that maintains itself · [weeks]
+
+**Goal (owner's standing wish).** At the end of every day, in the nobody-home / asleep window,
+Homie runs ONE self-maintenance pass and wakes lighter, healthier, and up to date by morning:
+it throws out what it no longer needs, heals what broke, upgrades itself when a vetted update is
+ready, and restarts fresh on the latest healthy build. Self-sufficient, self-learning,
+self-healing, self-upgrading — without the owner babysitting it.
+
+**Why this is mostly completion, not invention.** `core/ritual.py::consolidate()` already
+(decays + prunes the pattern of life, rotates/compacts the durability log, sweeps expired L4
+faceprints, self-heals QUARANTINED/DEGRADED tiles, and returns an advisory `restart_decision`),
+all behind abort gates (someone home / security live / gaming). M1 wired it in-process nightly.
+M10 added the morning "what I learned / forgot" note. M11 finishes the loop: file/memory hygiene,
+a real self-upgrade path, and actually enacting the end-of-day restart.
+
+**Tasks.**
+- **Hygiene — throw out the unnecessary.** Extend the consolidation pass to prune scratch/cache/
+  temp files and orphaned tile state, vacuum the durability log, and drop fully-decayed memory
+  keys — each bounded by an EXPLICIT retention rule, and each discard logged (the dream note
+  already says "what I forgot"; this extends it to files). Never delete data without a named rule
+  and a recorded line.
+- **Self-heal.** Keep the existing reload sweep for quarantined/degraded tiles; add a health gate
+  so an unrecoverable tile is left quarantined and surfaced in the morning note instead of
+  crash-looping the daemon.
+- **Self-upgrade (gated; panel-decided before building).** In the maintenance window, fetch the
+  vetted update channel, BUILD the new system closure, and switch atomically ONLY if it builds and
+  passes a smoke gate (the test suite + a boot/health probe) — else stay put. On Homie-OS (NixOS)
+  this is uniquely safe: rebuilds are atomic and every prior generation is a bootable rollback, so
+  a bad upgrade cannot brick the always-on brain (`nixos-rebuild switch` + generation rollback).
+- **End-of-day restart.** Enact the Ritual's `restart_decision` (soft reconfigure or reboot) in the
+  abort-gated window, so each day starts on the latest healthy build with a clear head.
+
+**Key decisions (panel before building the upgrade path — `CLAUDE.md` rule):**
+- Update channel + trust: signed git tag / pinned flake rev; who authorizes; unattended vs
+  manual-approve. (Auto-pulling and running code on the home's brain is the one genuinely
+  dangerous power here — the smoke gate + atomic rollback are what make it acceptable.)
+- Smoke gate definition: exactly what must pass before a generation is committed.
+- Cadence + abort gates: reuse `RitualGates` so maintenance never disrupts an occupied/secure/
+  gaming home.
+
+**Acceptance.**
+- `tests/test_ritual_hygiene.py::test_prunes_decayed_and_reports` — a seeded night prunes
+  fully-decayed memory keys + designated scratch files, reports what it discarded, and retained
+  data survives a restart.
+- `tests/test_self_upgrade.py::test_failing_build_leaves_generation_unchanged` — a failing build/
+  smoke gate leaves the running version untouched (no in-place half-upgrade); a passing one is
+  staged atomically.
+- `tests/test_ritual.py::test_restart_only_when_gates_clear` — a restart is advised/enacted only
+  when home/security/gaming gates are all clear.
+
+**Anti-goals.** No fully-unattended pull-and-run without the smoke gate + rollback; no upgrade or
+restart while the home is occupied, a security event is live, or the desktop is gaming; no deleting
+data without an explicit retention rule and a logged record.
+
+**Unblocks.** The "set it and forget it" promise — the home is a quiet appliance that keeps itself
+correct, not a project the owner maintains.
+
+---
+
 ## 5. The topology decision: why not three nodes (and the tripwire that flips it)
 
 **The fork.** Keep `Pi(perception) + miniPC(HA anchor) + desktop(on-demand GPU cortex)`, OR
@@ -656,6 +715,7 @@ each of those four feelings with something they can see or hear.
 | Then | **The Friction Ledger + one-key undo.** A scrollable column of plain sentences — "6:58pm — turned on hallway light · you turned it back off · I'll remember" — one keypress overrules and teaches. | **M8** | *It owns its actions, and I can always overrule it.* Trust from reversibility. |
 | Then | **The morning-after dream note.** Each morning, one short note: what it noticed, learned, and is unsure about. Written even if the GPU slept. | **M10** | *It was thinking about us.* An inner life that spans days — reactive gadget becomes household member. |
 | Last | **Trust tiers, surfaced.** The note and ledger say *who*; lessons learn only from household actors; the cockpit shows who's home and at what tier. Coarse labels, no faceprints, no vectors on the wire. | **M10** | *It knows the household — and respects its limits.* Personal without being invasive. |
+| Ongoing | **The nightly self-refresh.** Each night, unseen, it tidies (throws out what it no longer needs), heals broken tiles, upgrades itself when a vetted build is ready, and restarts fresh — then tells you in the morning note what it cleaned, fixed, and updated. | **M11** | *It takes care of itself.* You wake to a home that is lighter, healthier, and newer than you left it — a quiet appliance, not a project you maintain. |
 
 Design rules for the arc (panel-settled): the anchor answers **immediately from Remember** for
 status/pattern questions and **explicitly defers** reasoning-shaped ones — felt honesty beats
@@ -683,6 +743,7 @@ M7  [weeks]      Positive-schema guard + Dream Journal (retrieval) → C6; learn
 M8  [weeks]      Friction Ledger pane + one-key undo               → felt control; dataset feed
 M9  [days–wks]   Deploy posture + confinement                      → C7, C9
 M10 [weeks]      Visible posture + dream note + trust tiers        → C13 artifact; the payoff
+M11 [weeks]      Nightly self-refresh: hygiene·heal·upgrade·restart → self-sufficient appliance
 ```
 
 **The one rule to remember if you forget everything else:** there is exactly one wiring of
