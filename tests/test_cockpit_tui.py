@@ -100,5 +100,81 @@ class KeyTests(unittest.TestCase):
         self.assertEqual(c.input, "h")
 
 
+def cockpit_with_cam() -> tuple[Cockpit, list]:
+    spawned: list = []
+    launcher = Launcher(
+        (
+            App("camera", ("mpv", "--vo=drm", "av://v4l2:/dev/video0"), "cam"),
+            App("stremio", ("gamescope", "-f", "--", "stremio"), "Movies"),
+        ),
+        spawn=lambda argv: spawned.append(argv),
+    )
+    c = Cockpit(FakeClient(), launcher, present_fn=lambda: True)
+    return c, spawned
+
+
+def _focus_on(c: Cockpit, name: str) -> None:
+    c._focus = c._targets().index(name)
+
+
+class CameraVisibilityTests(unittest.TestCase):
+    def test_pane_hidden_when_no_device(self) -> None:
+        c, _ = cockpit_with_cam()
+        c._cam_present = False
+        self.assertFalse(c._cam_shown())
+        self.assertNotIn("camera", c._targets())
+
+    def test_pane_shown_when_device_present(self) -> None:
+        c, _ = cockpit_with_cam()
+        c._cam_present = True
+        self.assertTrue(c._cam_shown())
+        self.assertIn("camera", c._targets())
+
+    def test_cam_command_toggles_pane(self) -> None:
+        c, _ = cockpit_with_cam()
+        c._cam_present = True
+        c._command("cam")           # disable
+        self.assertFalse(c._cam_shown())
+        self.assertNotIn("camera", c._targets())
+        c._command("cam")           # re-enable
+        self.assertTrue(c._cam_shown())
+
+
+class NavigationTests(unittest.TestCase):
+    def test_focus_ring_wraps(self) -> None:
+        c, _ = cockpit_with_cam()
+        c._cam_present = True
+        targets = c._targets()  # ["chat", "camera", "stremio"]
+        self.assertEqual(c._focused(), "chat")
+        for _ in range(len(targets)):
+            c._move_focus(1)
+        self.assertEqual(c._focused(), "chat")  # full cycle returns home
+        c._move_focus(-1)
+        self.assertEqual(c._focused(), targets[-1])  # wraps backward
+
+    def test_enter_on_empty_input_activates_focused_app(self) -> None:
+        c, spawned = cockpit_with_cam()
+        c._cam_present = True
+        _focus_on(c, "stremio")
+        c._handle_key(10)  # Enter with empty input
+        self.assertEqual(len(spawned), 1)
+        self.assertEqual(spawned[0][0], "gamescope")
+
+    def test_enter_on_camera_launches_full_view(self) -> None:
+        c, spawned = cockpit_with_cam()
+        c._cam_present = True
+        _focus_on(c, "camera")
+        c._activate()
+        self.assertEqual(len(spawned), 1)
+        self.assertEqual(spawned[0][0], "mpv")  # full view is mpv --vo=drm
+
+    def test_enter_with_text_still_chats(self) -> None:
+        c, spawned = cockpit_with_cam()
+        c.input = "hello"
+        c._handle_key(10)
+        self.assertEqual(spawned, [])  # not a launch
+        self.assertEqual(c.client.sent, ["hello"])
+
+
 if __name__ == "__main__":
     unittest.main()

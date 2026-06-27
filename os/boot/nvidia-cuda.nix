@@ -68,9 +68,15 @@ in
   };
 
   hardware.nvidia = {
-    # Production branch: the stable, well-tested driver — the right default for
-    # an always-on appliance. (Pinned to the running kernel's package set so the
-    # module always matches the kernel NixOS builds.)
+    # Driver branch: production (550) — the KNOWN-GOOD display path on this 3060.
+    # We tried `latest` (565) for gamescope's Wayland explicit sync, but 565 went
+    # "NO SIGNAL" on the HDMI output with BOTH the open AND proprietary kernel
+    # modules (system stayed up, reachable over SSH) — a 565/3060 display
+    # regression on this kernel, not a config knob. So we stay on production for a
+    # reliable console + display. The Wayland flicker under gamescope that 565
+    # would have fixed is instead side-stepped by running GUI apps (Stremio) under
+    # a minimal X session, where NVIDIA 550 is rock-solid. Revisit a newer driver
+    # only if a future one is confirmed to drive this display.
     package = config.boot.kernelPackages.nvidiaPackages.production;
 
     # Open vs proprietary KERNEL module on Ampere (RTX 3060).
@@ -80,6 +86,10 @@ in
     # If a specific driver/kernel combo ever regresses on real hardware, this is
     # the one knob to flip to `false` for the known-good proprietary module.
     # VM-VALIDATE: which module loads cleanly is only provable on the 3060.
+    #
+    # Open module is the known-good display path AT 550 on this 3060 — keep it.
+    # (At 565 BOTH open and proprietary lost the HDMI signal, so the module was
+    # never the cause there; the 565 driver was. See the driver-branch note.)
     open = true;
 
     # Kernel modesetting — needed for a working console framebuffer (the only

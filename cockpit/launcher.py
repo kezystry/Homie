@@ -32,7 +32,11 @@ class App:
 DEFAULT_APPS: tuple[App, ...] = (
     App("stremio", ("gamescope", "-f", "--", "stremio"), "Movies & TV (Stremio)"),
     App("steam", ("gamescope", "-f", "--", "steam", "-gamepadui"), "Games (Steam / Proton)"),
-    App("camera", ("gamescope", "-f", "--", "mpv", "--profile=low-latency", "av://v4l2:/dev/video0"), "Live camera"),
+    # Camera is a single fullscreen VIDEO surface, so it renders straight to
+    # DRM/KMS with mpv (--vo=drm) instead of going through gamescope: on a bare
+    # NVIDIA console gamescope wants compositor/seat plumbing that mpv-on-DRM
+    # doesn't, so this is the more reliable path for the crisp full cam view.
+    App("camera", ("mpv", "--vo=drm", "--profile=low-latency", "av://v4l2:/dev/video0"), "Live camera (full)"),
 )
 
 
