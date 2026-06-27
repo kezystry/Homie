@@ -5,8 +5,8 @@ the **what & why**; this file is the **how it's going**. Updated every time a mi
 lands or a decision is taken.*
 
 - **Branch:** `claude/homie-overview-bo4l8v`
-- **Tests:** 280 passing (`python3 -m unittest discover -s tests`) — green on every push
-- **Last updated:** 2026-06-27, after M4; M5 in flight (capability panel)
+- **Tests:** 295 passing (`python3 -m unittest discover -s tests`) — green on every push
+- **Last updated:** 2026-06-27, after M5 (capability gate shipped); M6 next
 
 > **Live status page.** This board is the source-of-truth prose; for an at-a-glance page
 > that regenerates itself:
@@ -31,8 +31,8 @@ M2   ✅ shipped   Synthetic-perception harness + real Perceive.run
 M2.5 ✅ shipped   The clock — tick/timer seam + solar dusk
 M3   ✅ shipped   Wake telemetry → calibrated surprise → enforced budget
 M4   ✅ shipped   The hour-shaped lesson, spoken back
-M5   🔄 building   Capability-gated act path (panel deciding the token mechanism)
-M6   ⏳ planned    8B-on-3060 serving discipline
+M5   ✅ shipped   Capability-gated act path — no faked commands (closes C2/C14)
+M6   🔄 building   8B-on-3060 serving discipline
 M7   ⏳ planned    Positive-schema privacy guard + Dream Journal (retrieval)
 M8   ⏳ planned    Friction Ledger pane + one-key undo
 M9   ⏳ planned    Deploy posture + confinement
@@ -46,14 +46,13 @@ Legend: ✅ shipped & pushed · 🔄 in progress · ⏳ planned · ⏸ blocked o
 
 ## Now / Next / Later
 
-- **Now (M5):** Close **C2** — `Act` trusts `payload["priority"]`/`["actuator"]`, so any
-  tile can forge a `safety`-priority command on any mapped actuator via raw `ctx.emit`.
-  This is the gate that eventually fronts the lock, so the token mechanism is being
-  settled in a **panel** (capability-security, object-capability, OS-sandbox, bus, and an
-  adversarial red-teamer, then a chair) before code. Also folds in **C14** (the
-  `light.living` ↔ `light.living_room` name mismatch).
-- **Next (M6):** Give the real 8B-on-3060 cortex a serving discipline — grammar-constrained
+- **Now (M6):** Give the real 8B-on-3060 cortex a serving discipline — grammar-constrained
   tool decoding, a latency SLO, warm/cold policy chosen from **M3's measured wake cadence**.
+- **Just shipped (M5):** Closed **C2** — `Act` no longer trusts the payload's
+  priority/actuator; every command now carries a registry **capability handle** the trusted
+  core mints (bound to tile+actuator+manifest-priority), and a forged raw `ctx.emit` is
+  refused in-process *and* over the subprocess wire. Folded in **C14** (the
+  `light.living` ↔ `light.living_room` name mismatch). Settled by a 6-agent panel first.
 - **Later:** M7 retrieval/Dream Journal (the high-leverage learning upgrade, no weight
   tuning) → M8 felt control (undo) → M9 deploy hardening → M10 the visible payoff →
   M11 the self-sufficient nightly refresh.
@@ -70,28 +69,33 @@ Legend: ✅ shipped & pushed · 🔄 in progress · ⏳ planned · ⏸ blocked o
 | **M2.5** | The clock (`tick.*` + `timer.*`); lighting auto-off via timer; latitude-correct solar dusk; `HOMIE_TZ` pinned | N1, N4, N7 | +10 | `4ee4d99` `7c699bc` `6c2ab54` |
 | **M3** | Wake governance: `WakeLedger` (asleep-fraction is a real number) → per-zone calibrated surprise → event-clocked token budget (safety/chat exempt, deferred-never-dropped, backoff) | C8 | +15 | `4404698` |
 | **M4** | A freshly-formed `(room,hour)` lesson is spoken once ("…stop lighting the kitchen around 7pm") and survives a restart | felt | +1 | `aa0a20b` |
+| **M5** | Registry-handle capability: a tile drives only what its manifest declares, at its declared priority — even a forged raw emit is refused, in-process and over the subprocess wire; C14 name mismatch fixed | C2, C14 | +13 | `M5 (1–4/4)` |
 
 The throughline: M1 made the tested graph **be** the shipped graph; everything since grows
-capability on that proof — a heartbeat (M2.5), an honest energy budget (M3), and a felt
-voice for what it learns (M4).
+capability on that proof — a heartbeat (M2.5), an honest energy budget (M3), a felt voice
+for what it learns (M4), and a real least-privilege gate on every action (M5).
 
 ---
 
 ## Open decisions / questions
 
-- **M5 capability mechanism** — *being settled now by panel.* Per-call nonce vs
-  static per-`(tile,actuator,priority)` token; how it crosses the subprocess JSON wire
-  without the child being able to forge it; the honest in-process-shared-memory caveat.
+- **M5 capability mechanism** — *decided & shipped.* Registry **handle** (not a payload
+  token): a 128-bit opaque key into an in-process dict, never serialized over the wire.
+  Honest caveat recorded in `core/capability.py`: this stops accidental escalation and
+  hardens the subprocess boundary, but is **not** unforgeable against a malicious
+  in-process tile (shared heap) — the answer there is running it as a subprocess.
 - **Owner location/timezone** — `HOMIE_LAT`/`HOMIE_LON` left as fill-in placeholders in
   `os/boot/configuration.nix` (relocation pending); `HOMIE_TZ` defaulted to `Europe/Berlin`.
   Fill in on move-in to get latitude-correct dusk.
-- **Topology ratification** (recorded, not yet ratified) — collapse the brain to one
-  always-on node, keep the Pi as a privacy-edge camera only. **M3's wake-cadence data is
-  the input** that confirms or flips this; see MASTERPLAN §5.
+- **Topology — DECIDED by owner: keep the 3-machine design** (Pi + wired home-control box +
+  GPU desktop, talking over the private network). Because they talk to each other, the
+  cross-machine **privacy guard (M7) matters more** — raw camera/faces must never cross.
 - **Fine-tune go/no-go** (M-later) — accumulate the friction dataset + measurement first;
   evidence authorizes a trainer, or kills it. Default: no weight tuning.
-- **M11 self-upgrade trust model** — update channel, who authorizes, unattended vs approve —
-  a **panel decision before that path is built** (owner directive: self-sufficient, but gated).
+- **M11 nightly renewal — DECIDED by owner: at midnight Homie does BOTH** a full tidy-up/
+  refresh AND installs real upgrades (two separate steps). Safety rails (panel): keep only a
+  health-checked upgrade with automatic rollback, write down what changed, and never
+  auto-grant new device power without the owner's yes.
 
 ---
 

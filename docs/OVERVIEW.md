@@ -19,7 +19,7 @@ Success is the *declining rate of corrections*.
 ## Where it stands
 
 The reasoning-side spine runs and is tested today — Python 3.11+, stdlib only,
-**271 passing tests** plus an end-to-end `scripts/spine_demo.py`.
+**295 passing tests** plus an end-to-end `scripts/spine_demo.py`.
 
 **Built and tested:**
 - **Bus** (`core/bus.py`) — segment-aware glob pub/sub, per-subscriber bounded
