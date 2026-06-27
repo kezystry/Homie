@@ -162,6 +162,34 @@ class LightingTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(acts, [])
             await bus.aclose()
 
+    async def test_solar_dusk_gates_auto_on_when_location_set(self) -> None:
+        # With HOMIE_LAT/HOMIE_LON set, the dark-gate uses real solar dusk (N4): an
+        # arrival at 21:00 local in June (19:00 UTC) at Kiel is still daylight -> no
+        # auto-on; at ~midnight local it is dark -> auto-on.
+        import os
+        from datetime import timezone
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            bus, sup, acts = await self._sup(root)
+            saved = (os.environ.get("HOMIE_LAT"), os.environ.get("HOMIE_LON"))
+            os.environ["HOMIE_LAT"], os.environ["HOMIE_LON"] = "54.32", "10.14"
+            try:
+                daylight = datetime(2026, 6, 21, 19, 0, 0, tzinfo=timezone.utc).timestamp()
+                await bus.publish(Event("presence.arrived", daylight, {"zone": "living"}))
+                await bus.drain()
+                self.assertEqual(acts, [])  # solar dusk: not dark yet at 21:00 in June
+                night = datetime(2026, 6, 21, 22, 0, 0, tzinfo=timezone.utc).timestamp()
+                await bus.publish(Event("presence.arrived", night, {"zone": "living"}))
+                await bus.drain()
+                self.assertEqual(len(acts), 1)  # genuinely dark now -> auto-on
+            finally:
+                for key, val in zip(("HOMIE_LAT", "HOMIE_LON"), saved):
+                    if val is None:
+                        os.environ.pop(key, None)
+                    else:
+                        os.environ[key] = val
+            await bus.aclose()
+
     async def test_security_request_outranks_ambient_light(self) -> None:
         with TemporaryDirectory() as d:
             root = Path(d)

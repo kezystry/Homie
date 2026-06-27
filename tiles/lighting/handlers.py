@@ -12,12 +12,13 @@ human reversal.
 """
 from __future__ import annotations
 
+import os
 from datetime import datetime
 
 from core.tile import Context, Event, Tile
 
-DARK_AFTER = 18  # local hour: auto-light only between dusk...
-DARK_BEFORE = 7  # ...and dawn
+DARK_AFTER = 18  # fallback local hour: auto-light only between dusk...
+DARK_BEFORE = 7  # ...and dawn (used only when no HOMIE_LAT/HOMIE_LON is configured)
 OFF_WINDOW = 600.0  # seconds a room must stay empty before the light auto-offs
 NEVER_AUTO_ON = {"bedroom"}  # request-only rooms (sleeping != wanting the light on)
 
@@ -26,9 +27,27 @@ def _hour(ts: float) -> int:
     return datetime.fromtimestamp(ts).hour
 
 
+def _location() -> tuple[float, float] | None:
+    """The home's (lat, lon) from HOMIE_LAT/HOMIE_LON, or None if unset/unparseable."""
+    lat, lon = os.environ.get("HOMIE_LAT"), os.environ.get("HOMIE_LON")
+    if lat is None or lon is None:
+        return None
+    try:
+        return float(lat), float(lon)
+    except ValueError:
+        return None
+
+
 def _is_dark(ts: float) -> bool:
-    h = _hour(ts)
-    return h >= DARK_AFTER or h < DARK_BEFORE
+    """Is it dark enough to want lights at `ts`? Uses real solar civil dusk when the
+    home's location is configured (HOMIE_LAT/HOMIE_LON) — correct at any latitude —
+    and falls back to the fixed 18:00–07:00 window otherwise (second-review N4)."""
+    loc = _location()
+    if loc is None:
+        h = _hour(ts)
+        return h >= DARK_AFTER or h < DARK_BEFORE
+    from core.sun import is_dark as solar_is_dark
+    return solar_is_dark(ts, loc[0], loc[1])
 
 
 def _off_key(room: str) -> str:

@@ -89,7 +89,17 @@
     serviceConfig = {
       ExecStart = "${pkgs.python311}/bin/python3 /opt/homie/scripts/run.py";
       WorkingDirectory = "/opt/homie";
-      Environment = "HOMIE_STATE=/var/lib/homie";
+      Environment = [
+        "HOMIE_STATE=/var/lib/homie"
+        # Pin the home's timezone so Remember's hour-of-day buckets and the tiles all
+        # agree on "what hour is it" (second-review N7). Change this on a move.
+        "HOMIE_TZ=Europe/Berlin"
+        # Set the home's coordinates to enable latitude-correct solar dusk for lighting
+        # (second-review N4); leave unset for the fixed 18:00–07:00 fallback. Fill in on
+        # move-in (e.g. Kiel: 54.32, 10.14).
+        # "HOMIE_LAT=54.32"
+        # "HOMIE_LON=10.14"
+      ];
       User = "homie";
       Group = "users";
 
