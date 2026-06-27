@@ -36,12 +36,20 @@ let
     </openbox_config>
   '';
 
-  # The X session script: kill screen-blanking, start a tiny WM for focus +
-  # forced-fullscreen, then exec Stremio as the sole client. When Stremio quits,
-  # the exec'd process ends, X tears down, and you're back at the console.
+  # The X session script. Two hard-won fixes baked in:
+  #  - Stremio's UI is embedded Chromium; its GPU process CRASHES on interaction
+  #    on headless NVIDIA (window vanishes on click). Disable the GPU for the
+  #    (lightweight) UI — video still plays at full quality via Stremio's separate
+  #    mpv/NVDEC path. Override with HOMIE_STREMIO_FLAGS for experiments.
+  #  - Start the WM and let it SETTLE before Stremio maps, otherwise Stremio opens
+  #    as a small unmanaged window (not fullscreen). The 2s sleep wins the race.
+  # When Stremio quits, the exec'd process ends, X tears down, back to console.
   stremioXinit = pkgs.writeShellScript "homie-watch-xinit" ''
     ${pkgs.xorg.xset}/bin/xset s off -dpms
+    export QTWEBENGINE_DISABLE_SANDBOX=1
+    export QTWEBENGINE_CHROMIUM_FLAGS="''${HOMIE_STREMIO_FLAGS:---disable-gpu --disable-gpu-compositing --no-sandbox}"
     ${pkgs.openbox}/bin/openbox --config-file ${openboxKiosk} &
+    sleep 2
     exec ${pkgs.stremio}/bin/stremio
   '';
 in
