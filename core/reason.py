@@ -13,9 +13,11 @@ not of the model's manners.
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
-from typing import NamedTuple, Protocol
+from typing import Callable, NamedTuple, Protocol
 
+from core.serving import LatencySLO, WarmPolicy
 from core.tile import Event
 from core.wake_ledger import SurpriseGate, WakeBudget, WakeDecision, WakeLedger
 
@@ -79,6 +81,11 @@ WAKE_RATE = 0.1
 # The telemetry topic the cortex emits for every SURPRISING evaluation (fired, deferred,
 # or exempt) so the cockpit and the event log can see — and bound — the wake cadence.
 WAKE_DECISION = "wake.decision"
+
+# Serving telemetry (M6): emitted after each real model call with the round-trip latency,
+# whether it met the SLO, the rolling p95, and the warm/cold state of the GPU. The deploy
+# layer can subscribe to keep the desktop warm; the status page reads it for "is it quick?".
+SERVED = "reason.served"
 
 SYSTEM_PROMPT = (
     "You are Homie, a private, local home intelligence. Given a situation, you may "
@@ -167,7 +174,8 @@ class Reason:
 
     def __init__(self, bus, llm: LLMClient, supervisor, remember, *, system_prompt: str = SYSTEM_PROMPT,
                  ledger: WakeLedger | None = None, budget: WakeBudget | None = None,
-                 gate: SurpriseGate | None = None) -> None:
+                 gate: SurpriseGate | None = None, slo: LatencySLO | None = None,
+                 warm: WarmPolicy | None = None, now: Callable[[], float] = time.monotonic) -> None:
         self.bus = bus
         self.llm = llm
         self.sup = supervisor
@@ -179,6 +187,11 @@ class Reason:
         self.ledger = ledger if ledger is not None else WakeLedger()
         self.budget = budget if budget is not None else WakeBudget()
         self.gate = gate if gate is not None else SurpriseGate()
+        # Serving discipline (M6): measure latency against an SLO, track warm/cold from the
+        # wake cadence. `now` is a monotonic clock for measuring round-trips (injected in tests).
+        self.slo = slo if slo is not None else LatencySLO()
+        self.warm = warm if warm is not None else WarmPolicy(now=now)
+        self._now = now
         self._subs: list = []
         self._inflight: set = set()  # zones with a decision in progress (drop-coalesce bursts)
 
@@ -255,13 +268,32 @@ class Reason:
                 "deferred": decision.deferred, "outcome": decision.outcome,
             }, source="reason"))
 
+    async def _timed_propose(self, *, system: str, context: dict, tools: list[dict], ts: float, kind: str) -> Proposal:
+        """Call the model with serving discipline (M6): time the round-trip on a monotonic
+        clock, record it against the SLO, note the wake for the warm policy, and emit
+        `reason.served` telemetry. Raises whatever the client raises — callers stand down."""
+        t0 = self._now()
+        try:
+            proposal = await self.llm.propose(system=system, context=context, tools=tools)
+        finally:
+            latency_ms = (self._now() - t0) * 1000.0
+            met = self.slo.record(latency_ms)
+            self.warm.note_wake(self._now())
+            await self.bus.publish(Event(SERVED, ts, {
+                "kind": kind, "latency_ms": round(latency_ms, 1), "slo_met": met,
+                "p95_ms": self.slo.p95(), "warm": self.warm.is_warm(),
+            }, source="reason"))
+        return proposal
+
     async def decide(self, event: Event, exp) -> bool:
         """Wake the model, validate what it proposes, and route it — never drive. Returns
         whether the model actually DID something (spoke or acted), which feeds the wake
         budget's backoff so a corner of the house it keeps ignoring stops costing wakes."""
         tools = self.sup.tool_catalog()
         try:
-            proposal = await self.llm.propose(system=self.system, context=build_context(event, exp), tools=tools)
+            proposal = await self._timed_propose(
+                system=self.system, context=build_context(event, exp), tools=tools,
+                ts=event.ts, kind="wake")
         except Exception as ex:  # a model/serving failure must never crash the bus
             log.warning("reason: LLM propose failed (%r); standing down", ex)
             return False
@@ -303,7 +335,8 @@ class Reason:
         path. The reply goes back on `chat.reply` for the cockpit to render."""
         tools = self.sup.tool_catalog()
         try:
-            proposal = await self.llm.propose(system=CHAT_SYSTEM_PROMPT, context={"chat": text}, tools=tools)
+            proposal = await self._timed_propose(
+                system=CHAT_SYSTEM_PROMPT, context={"chat": text}, tools=tools, ts=ts, kind="chat")
         except Exception as ex:  # a model/serving failure must never crash the bus
             log.warning("reason: chat propose failed (%r); apologising", ex)
             await self.bus.publish(Event(CHAT_REPLY, ts, {"text": "Sorry — I couldn't answer just now."}, source="reason"))

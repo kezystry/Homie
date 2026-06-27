@@ -275,5 +275,74 @@ class CortexChatTests(unittest.IsolatedAsyncioTestCase):
         await bus.aclose()
 
 
+# --------------------------------------------------------------------------- #
+# Serving discipline (M6): the cortex times each call, records the SLO, and emits
+# `reason.served` telemetry with latency + warm state. No GPU; an injected clock
+# advances during propose() to simulate a real round-trip.
+# --------------------------------------------------------------------------- #
+class _Clock:
+    def __init__(self) -> None:
+        self.t = 0.0
+
+    def __call__(self) -> float:
+        return self.t
+
+
+class SlowLLM:
+    """A fake model that 'takes' `ms` by advancing the injected clock during propose."""
+
+    def __init__(self, clk: _Clock, ms: float, proposal=None) -> None:
+        self.clk = clk
+        self.ms = ms
+        self.proposal = proposal if proposal is not None else Proposal(say="hi")
+
+    async def propose(self, *, system, context, tools) -> Proposal:
+        self.clk.t += self.ms / 1000.0
+        return self.proposal
+
+
+class CortexServingTests(unittest.IsolatedAsyncioTestCase):
+    async def test_served_telemetry_records_latency_and_warm(self) -> None:
+        from core.serving import LatencySLO, WarmPolicy
+        clk = _Clock()
+        slo = LatencySLO(budget_ms=4000.0)
+        llm = SlowLLM(clk, 1500.0)
+        bus = Bus()
+        reason = Reason(bus, llm, SpySupervisor(CATALOG), FakeRemember(NOVEL),
+                        slo=slo, warm=WarmPolicy(now=clk), now=clk)
+        served: list = []
+        bus.subscribe("reason.served", collect(served))
+        await reason.start()
+        await bus.publish(PRES)
+        await bus.drain()
+        self.assertEqual(len(served), 1)
+        p = served[0].payload
+        self.assertEqual(p["kind"], "wake")
+        self.assertAlmostEqual(p["latency_ms"], 1500.0)
+        self.assertTrue(p["slo_met"])     # 1500ms < 4000ms budget
+        self.assertTrue(p["warm"])        # the GPU just woke
+        self.assertEqual(slo.total, 1)
+        self.assertEqual(slo.breaches, 0)
+        await reason.stop()
+        await bus.aclose()
+
+    async def test_slo_breach_is_flagged(self) -> None:
+        from core.serving import LatencySLO, WarmPolicy
+        clk = _Clock()
+        slo = LatencySLO(budget_ms=1000.0)
+        bus = Bus()
+        reason = Reason(bus, SlowLLM(clk, 1500.0), SpySupervisor(CATALOG), FakeRemember(NOVEL),
+                        slo=slo, warm=WarmPolicy(now=clk), now=clk)
+        served: list = []
+        bus.subscribe("reason.served", collect(served))
+        await reason.start()
+        await bus.publish(PRES)
+        await bus.drain()
+        self.assertFalse(served[0].payload["slo_met"])  # 1500ms > 1000ms budget
+        self.assertEqual(slo.breaches, 1)
+        await reason.stop()
+        await bus.aclose()
+
+
 if __name__ == "__main__":
     unittest.main()

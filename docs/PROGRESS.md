@@ -5,9 +5,9 @@ the **what & why**; this file is the **how it's going**. Updated every time a mi
 lands or a decision is taken.*
 
 - **Branch:** `claude/homie-overview-bo4l8v`
-- **Tests:** 325 passing (`python3 -m unittest discover -s tests`) — green on every push
-- **Last updated:** 2026-06-27, after the **Home Assistant adapter** (the real hand) +
-  the GIST v2 memory format; M6 next
+- **Tests:** 338 passing (`python3 -m unittest discover -s tests`) — green on every push
+- **Last updated:** 2026-06-27, after **M6** (serving discipline) + the **Home Assistant
+  adapter** (the real hand) + the GIST v2 memory format; M7 next
 
 > **Updating the Homie box.** The box runs a git checkout at `/opt/homie`; update with
 > `python3 scripts/update.py` (pulls + runs the suite as a health check, reports safe/not),
@@ -38,7 +38,7 @@ M2.5 ✅ shipped   The clock — tick/timer seam + solar dusk
 M3   ✅ shipped   Wake telemetry → calibrated surprise → enforced budget
 M4   ✅ shipped   The hour-shaped lesson, spoken back
 M5   ✅ shipped   Capability-gated act path — no faked commands (closes C2/C14)
-M6   🔄 building   8B-on-3060 serving discipline
+M6   ✅ shipped   8B-on-3060 serving discipline — latency SLO, warm/cold, tool grammar
 M7   ⏳ planned    Positive-schema privacy guard + Dream Journal (retrieval)
 M8   ⏳ planned    Friction Ledger pane + one-key undo
 M9   ⏳ planned    Deploy posture + confinement
@@ -52,8 +52,15 @@ Legend: ✅ shipped & pushed · 🔄 in progress · ⏳ planned · ⏸ blocked o
 
 ## Now / Next / Later
 
-- **Now (M6):** Give the real 8B-on-3060 cortex a serving discipline — grammar-constrained
-  tool decoding, a latency SLO, warm/cold policy chosen from **M3's measured wake cadence**.
+- **Now (M7):** The privacy guard + Dream Journal — Homie remembers routines via retrieval
+  (the GIST format) while a positive-schema guard keeps private things (faces, raw camera) from
+  ever crossing between machines.
+- **Just shipped (M6 — serving discipline):** the cortex now decodes tool calls under their
+  JSON-Schema grammar (fewer malformed-call drops), **times every model call against a latency
+  SLO** and emits `reason.served` telemetry (latency, p95, met?), and keeps the GPU warm only
+  around real activity via a `WarmPolicy` (so the 3060 sleeps for fast WoL yet doesn't re-pay
+  cold-start mid-burst). The model choice is recorded in `deploy/MODEL.md`: an abliterated-then-
+  healed Qwen3-8B as default, stock kept for A/B.
 - **Just shipped (the real hand — Home Assistant adapter):** the `HomeClient` seam that was a
   `LoggingHome` stub is now a working **Home Assistant client** (`core/ha.py` over a stdlib
   WebSocket in `core/ws.py`). Homie drives real DIRIGERA/Tradfri lights via `call_service` and
@@ -84,6 +91,8 @@ Legend: ✅ shipped & pushed · 🔄 in progress · ⏳ planned · ⏸ blocked o
 | **M3** | Wake governance: `WakeLedger` (asleep-fraction is a real number) → per-zone calibrated surprise → event-clocked token budget (safety/chat exempt, deferred-never-dropped, backoff) | C8 | +15 | `4404698` |
 | **M4** | A freshly-formed `(room,hour)` lesson is spoken once ("…stop lighting the kitchen around 7pm") and survives a restart | felt | +1 | `aa0a20b` |
 | **M5** | Registry-handle capability: a tile drives only what its manifest declares, at its declared priority — even a forged raw emit is refused, in-process and over the subprocess wire; C14 name mismatch fixed | C2, C14 | +13 | `M5 (1–4/4)` |
+| **—** | **The real hand:** `HomeAssistantClient` over a stdlib WebSocket — drives real DIRIGERA/Tradfri via `call_service`, hears human switch-flips via `subscribe_events`, echoes suppressed through the one `ha_canonical`; reconnects with backoff | deploy seam | +20 | `e247c28` |
+| **M6** | Serving discipline: JSON-Schema tool-grammar decode, a latency SLO with `reason.served` telemetry, and a warm/cold `WarmPolicy`; model card (abliterated Qwen3-8B default + stock A/B) | felt: quick | +13 | `M6` |
 
 The throughline: M1 made the tested graph **be** the shipped graph; everything since grows
 capability on that proof — a heartbeat (M2.5), an honest energy budget (M3), a felt voice
