@@ -43,6 +43,23 @@ def _llm_client():
     return client_from_env()
 
 
+def _perception():
+    """The injected perception source. With HOMIE_FAKE_PERCEPTION=<scenario> set, boot
+    the REAL daemon against a deterministic synthetic day (no camera/Pi/GPU) — the
+    acceptance harness for the whole graph until the live mesh/device adapter lands.
+    Unset = no live intake yet (events arrive via tests/mesh)."""
+    name = os.environ.get("HOMIE_FAKE_PERCEPTION")
+    if not name:
+        return None
+    from core.perceive import Perceive  # lazy: only the demo path needs these
+    from core.scenarios import build
+    from core.synthetic import SyntheticPerception
+
+    speed = float(os.environ.get("HOMIE_FAKE_SPEED", "1.0"))
+    print(f"homie: synthetic perception — replaying {name!r} (speed={speed})", flush=True)
+    return Perceive(SyntheticPerception(build(name), speed=speed))
+
+
 def _act_map() -> ActMap | None:
     """The actuator allowlist + never-touch guard, from deploy/act_map.toml. An
     unreadable map means no actuators are mapped (the loop still runs)."""
@@ -66,9 +83,9 @@ async def main() -> None:
         compact_threshold=int(os.environ.get("HOMIE_COMPACT_THRESHOLD", "5000")),
         compact_interval=float(os.environ.get("HOMIE_COMPACT_INTERVAL", "3600")),
     )
-    # perception=None for now: the live MQTT/mesh intake adapter lands in M2 and is
-    # injected here exactly like the home and the model — one more seam, no rewiring.
-    daemon = build_daemon(home_from_env(), None, config=config)
+    # Perception is one more injected seam: a synthetic scenario (HOMIE_FAKE_PERCEPTION)
+    # today, the live MQTT/mesh adapter later — no rewiring, just a different source.
+    daemon = build_daemon(home_from_env(), _perception(), config=config)
     await daemon.start()
     print(f"homie: up with tiles {daemon.sup.status()}", flush=True)
     try:

@@ -12,7 +12,14 @@ token set is shared with the mesh guard so the two can never drift apart.
 """
 from __future__ import annotations
 
+import logging
+from dataclasses import replace
+from typing import AsyncIterator, Protocol
+
 from core.mesh import PrivacyGuard
+from core.tile import Event
+
+log = logging.getLogger("homie.perceive")
 
 # Single source of truth for what perception may never emit (raw imagery, crops,
 # bounding boxes, faceprints, embeddings). Shared with the mesh PrivacyGuard.
@@ -42,5 +49,29 @@ def assert_emittable(topic: str, payload: dict, *, max_bytes: int = MAX_PAYLOAD_
         raise PrivacyViolation(f"perception payload is {size} bytes (>{max_bytes}) — likely raw imagery")
 
 
+class PerceptionSource(Protocol):
+    """A stream of already-normalized perception events. The live mesh/device adapter
+    and the `SyntheticPerception` harness implement the SAME interface, so `Perceive.run`
+    is the one intake path both flow through — the harness is not a test-only fork."""
+
+    def events(self) -> AsyncIterator[Event]: ...
+
+
 class Perceive:
-    async def run(self, bus) -> None: ...
+    """The perception intake loop: pull normalized events from an injected source and
+    publish them onto the bus, fail-closed-guarded by `assert_emittable` at the source
+    (one layer before the mesh). A forbidden event is dropped + logged loudly, never
+    published and never allowed to kill intake. Injected into the daemon as the
+    perception seam (`build_daemon(home, Perceive(source), ...)`)."""
+
+    def __init__(self, source: PerceptionSource) -> None:
+        self.source = source
+
+    async def run(self, bus) -> None:
+        async for event in self.source.events():
+            try:
+                assert_emittable(event.topic, event.payload)
+            except PrivacyViolation:
+                log.error("perceive: dropped non-emittable event on %r (privacy guard)", event.topic)
+                continue
+            await bus.publish(replace(event, source=event.source or "perception"))
