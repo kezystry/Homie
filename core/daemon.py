@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Awaitable, Callable, Protocol
 
 from core.act import Act, ActMap, CommandLog
+from core.capability import CapabilityRegistry
 from core.anchor_voice import AnchorVoice
 from core.bus import Bus
 from core.canonical import ha_canonical
@@ -217,13 +218,19 @@ def build_daemon(home, perception: Perception | None, *, config: DaemonConfig | 
               compact_threshold=config.compact_threshold)
     remember = Remember()
     consent = Consent(bus)
-    sup = Supervisor(tiles_dir, bus, remember=remember, consent=consent, state_root=config.state)
+    # ONE capability registry, shared by reference with both the minter (Supervisor's
+    # ctx.act) and the verifier (Act). This is the single wiring that makes least-privilege
+    # true: a tile can only drive what its manifest declares, at the priority it declares,
+    # even via a raw emit (C2). Built here so there is exactly one instance (the keystone).
+    registry = CapabilityRegistry()
+    sup = Supervisor(tiles_dir, bus, remember=remember, consent=consent,
+                     state_root=config.state, registry=registry)
 
     # The act path: one CommandLog shared by Act (writer) and the reconciler
     # (matcher) so Homie's own echoes are suppressed and only human changes become
     # friction. ha_canonical normalizes values to the home's echo form.
     commands = CommandLog(canonical=ha_canonical)
-    act = Act(bus, home, commands, act_map)
+    act = Act(bus, home, commands, act_map, registry=registry)
     reconciler = StateReconciler(sup, commands, act_map.reverse, on_echo=act.confirm)
 
     # Reason is ALWAYS wired; a real client means the cortex is present, else the

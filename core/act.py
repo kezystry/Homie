@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Awaitable, Callable, Protocol
 
 from core.bus import Priority, Request
+from core.capability import CapabilityRegistry
 from core.tile import Event
 
 log = logging.getLogger("homie.act")
@@ -138,13 +139,19 @@ class CommandLog:
 # Act
 # --------------------------------------------------------------------------- #
 class Act:
-    def __init__(self, bus, home: HomeClient, commands: CommandLog, act_map: ActMap, *, hold_window: float = 5.0) -> None:
+    def __init__(self, bus, home: HomeClient, commands: CommandLog, act_map: ActMap, *,
+                 hold_window: float = 5.0, registry: CapabilityRegistry | None = None) -> None:
         self.bus = bus
         self.home = home
         self.commands = commands
         self.map = act_map
         self.hold_window = hold_window  # how long a winning request "holds" its actuator
         self._holds: dict[str, Request] = {}  # last winner per actuator (for arbitration)
+        # The capability registry (C2). When present, Act trusts ONLY a resolvable handle
+        # and ignores the payload's actuator/tile/priority. None is the legacy path for the
+        # direct-publish unit tests that construct a bare Act — production always injects one
+        # via build_daemon, so this is not a production bypass.
+        self._caps = registry
         self._sub = None
 
     async def start(self) -> None:
@@ -156,10 +163,24 @@ class Act:
             self._sub = None
 
     async def _on_request(self, event: Event) -> None:
-        actuator = event.payload.get("actuator")
-        value = event.payload.get("value")
-        tile = event.payload.get("tile")
-        level = event.payload.get("priority", "automation")
+        # Capability gate (C2): resolve the handle FIRST and take the authoritative
+        # (actuator, priority, tile) from the registry — never from the payload, which a
+        # tile could forge. A missing/forged handle is refused before arbitration. The
+        # act-map + never_touch still run AFTER this, so the outer boundary stays absolute.
+        if self._caps is not None:
+            cap = self._caps.resolve(event.payload.get("cap"))
+            if cap is None:
+                await self.bus.publish(
+                    Event("actuator.failed", event.ts,
+                          {"actuator": event.payload.get("actuator"), "value": event.payload.get("value"),
+                           "tile": event.payload.get("tile"), "reason": "no_capability"}, source="act"))
+                return
+            actuator, value, tile, level = cap.actuator, event.payload.get("value"), cap.tile, cap.priority
+        else:  # legacy path: bare Act in unit tests, no registry — trust the payload as before
+            actuator = event.payload.get("actuator")
+            value = event.payload.get("value")
+            tile = event.payload.get("tile")
+            level = event.payload.get("priority", "automation")
         req = Request(actuator, value, _PRIORITY.get(level, Priority.AUTOMATION), tile, event.ts)
 
         # Arbitration (the bus is the referee): a fresh higher-priority decision
