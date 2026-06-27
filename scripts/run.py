@@ -25,6 +25,7 @@ sys.path.insert(0, str(ROOT))
 log = logging.getLogger("homie.run")
 
 from core.bus import Bus  # noqa: E402
+from core.cockpit_bridge import CockpitBridge  # noqa: E402
 from core.consent import Consent  # noqa: E402
 from core.reason import Reason  # noqa: E402
 from core.remember import Remember  # noqa: E402
@@ -87,6 +88,19 @@ async def main() -> None:
     sup = Supervisor(ROOT / "tiles", bus, remember=remember, consent=consent, state_root=STATE)
     await sup.start_all()
     await _maybe_start_reason(bus, sup, remember)  # cortex iff HOMIE_LLM_URL is set
+
+    # The Layer 2 cockpit's only window onto the bus: a local, capability-scoped
+    # unix socket (read + chat, no actuator authority). Defaults under the
+    # writable state dir so it needs no extra systemd RuntimeDirectory. A failure
+    # here must never take down the brain — the cockpit is optional.
+    cockpit_sock = os.environ.get("HOMIE_COCKPIT_SOCK", str(STATE / "cockpit.sock"))
+    cockpit = CockpitBridge(bus, path=cockpit_sock)
+    try:
+        await cockpit.start()
+        print(f"homie: cockpit bridge on {cockpit_sock}", flush=True)
+    except Exception as ex:
+        log.warning("cockpit bridge failed to start (%r); continuing without it", ex)
+
     print(f"homie: up with tiles {sup.status()}", flush=True)
 
     def _spawn_housekeep() -> None:
