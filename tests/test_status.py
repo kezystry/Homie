@@ -112,6 +112,34 @@ class RenderTests(unittest.TestCase):
         self.assertIn("42", out)
 
 
+class TextRenderTests(unittest.TestCase):
+    def _facts(self, **over):
+        base = {
+            "generated_at": "2026-06-27 12:00:00 UTC",
+            "milestones": S.parse_milestones(SAMPLE),
+            "shipped": 2, "total": 4,
+            "git": {"branch": "claude/homie-overview-bo4l8v",
+                    "commits": [{"hash": "abc1234", "subject": "M4: spoken lesson"}]},
+            "tests": {"ran": True, "ok": True, "count": 280, "duration": 1.7},
+            "runtime": {"present": True, "path": "/var/lib/homie",
+                        "events": {"count": 42, "last_activity": "2026-06-27T10:00:00+00:00"},
+                        "lessons": [{"tile": "lighting", "room": "kitchen", "hours": [19]}]},
+        }
+        base.update(over)
+        return base
+
+    def test_text_is_plain_and_has_the_facts(self) -> None:
+        out = S.render_text(self._facts(), color=False)
+        self.assertNotIn("<", out)  # not HTML
+        self.assertNotIn("\033[", out)  # color off -> no ANSI
+        for token in ("Homie", "M5", "building", "claude/homie-overview-bo4l8v",
+                      "280 passing", "kitchen", "7pm", "abc1234", "2/4 shipped"):
+            self.assertIn(token, out)
+
+    def test_color_adds_ansi(self) -> None:
+        self.assertIn("\033[", S.render_text(self._facts(), color=True))
+
+
 class GatherTests(unittest.TestCase):
     def test_gather_without_tests_is_offline_safe(self) -> None:
         facts = S.gather(run_tests=False)

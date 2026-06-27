@@ -80,6 +80,8 @@ def serve(host: str, port: int, state: Path | None, run_tests: bool, refresh: in
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description="Homie status page")
+    ap.add_argument("--text", action="store_true", help="print the board to the terminal (great over SSH)")
+    ap.add_argument("--no-color", action="store_true", help="plain text, no ANSI colour")
     ap.add_argument("--serve", action="store_true", help="serve live instead of writing a file")
     ap.add_argument("--tests", action="store_true", help="run the test suite for a live pass/fail")
     ap.add_argument("--out", default="status.html", help="output file (write mode)")
@@ -92,6 +94,11 @@ def main(argv: list[str]) -> int:
 
     if args.serve:
         serve(args.host, args.port, state, args.tests, args.refresh)
+        return 0
+    if args.text:
+        facts = S.gather(state_dir=state, run_tests=args.tests)
+        color = not args.no_color and sys.stdout.isatty()
+        sys.stdout.write(S.render_text(facts, color=color))
         return 0
     out = write_once(Path(args.out), state, args.tests).resolve()
     print(f"wrote {out}\nopen it in a browser: file://{out}")

@@ -303,3 +303,64 @@ def render_html(facts: dict, *, live: bool = False, refresh: int = 10) -> str:
 def _oclock(hour: int) -> str:
     suffix = "am" if hour < 12 else "pm"
     return f"{hour % 12 or 12}{suffix}"
+
+
+# --------------------------------------------------------------------------- #
+# Render — a terminal board for SSH (no browser, no port-forward)
+# --------------------------------------------------------------------------- #
+_ANSI = {"ok": "32", "wip": "33", "plan": "90", "blocked": "31", "head": "1;36", "dim": "90"}
+
+
+def render_text(facts: dict, *, color: bool = True, width: int = 64) -> str:
+    """The same status as the HTML page, rendered for a terminal — what you see when you
+    SSH in from your phone. ANSI-coloured unless `color=False`."""
+    def c(s, key):
+        return f"\033[{_ANSI[key]}m{s}\033[0m" if color and key in _ANSI else str(s)
+
+    L: list[str] = []
+    L.append(c("🏠 Homie · status", "head") + c(f"   {facts['generated_at']}", "dim"))
+
+    shipped, total = facts["shipped"], facts["total"]
+    if total:
+        pct = round(100 * shipped / total)
+        filled = round(width * shipped / total)
+        bar = "█" * filled + "·" * (width - filled)
+        L.append(f"  [{c(bar, 'ok')}] {shipped}/{total} shipped ({pct}%)")
+
+    git, t = facts["git"], facts["tests"]
+    if t.get("skipped"):
+        tline = c("not run (pass --tests)", "dim")
+    elif t.get("ran"):
+        tline = c(f"{t.get('count')} passing" if t["ok"] else f"{t.get('count')} FAILING",
+                  "ok" if t["ok"] else "blocked") + c(f" in {t.get('duration')}s", "dim")
+    else:
+        tline = c("could not run", "blocked")
+    L.append(f"  branch {c(git['branch'], 'head')}   tests {tline}")
+
+    L.append("")
+    L.append(c("  MILESTONES", "dim"))
+    for m in facts["milestones"]:
+        L.append(f"  {m.id:<5} {c(f'{m.icon} {m.status:<8}', m.css)} {m.text}")
+
+    rt = facts["runtime"]
+    L.append("")
+    L.append(c("  RUNTIME", "dim"))
+    if rt.get("present"):
+        ev = rt.get("events", {})
+        L.append(f"  {ev.get('count', 0)} events · last {c(ev.get('last_activity') or '—', 'dim')}")
+        lessons = rt.get("lessons") or []
+        if lessons:
+            L.append(c("  what Homie has learned:", "dim"))
+            for l in lessons:
+                hrs = ", ".join(_oclock(h) for h in l["hours"])
+                L.append(f"    · {l['tile']}: dark in the {c(l['room'], 'ok')} at {hrs}")
+        else:
+            L.append(c("    (no lessons learned yet)", "dim"))
+    else:
+        L.append(c(f"  daemon state not found — {rt.get('reason', '')}", "dim"))
+
+    L.append("")
+    L.append(c("  RECENT", "dim"))
+    for cm in git["commits"][:6]:
+        L.append(f"  {c(cm['hash'], 'wip')} {cm['subject']}")
+    return "\n".join(L) + "\n"

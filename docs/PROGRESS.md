@@ -9,11 +9,16 @@ lands or a decision is taken.*
 - **Last updated:** 2026-06-27, after M4; M5 in flight (capability panel)
 
 > **Live status page.** This board is the source-of-truth prose; for an at-a-glance page
-> that regenerates itself, run `python3 scripts/status.py` (writes `status.html` — open it
-> any time) or `python3 scripts/status.py --serve` for an auto-refreshing live URL. It
-> gathers everything fresh from git + disk: milestone board, branch, recent commits, an
-> optional live test run (`--tests`), and — if a daemon state dir is present — the event
-> log's activity and the lessons Homie has actually learned.
+> that regenerates itself:
+> - `python3 scripts/status.py --text` — **prints the board right in your terminal** (best
+>   over SSH from a phone — no browser, no port-forward; add `--tests` for a live pass/fail).
+> - `python3 scripts/status.py` — writes `status.html` to open in a browser any time.
+> - `python3 scripts/status.py --serve` — an auto-refreshing live URL (tunnel it over SSH
+>   with `ssh -L 8765:localhost:8765 <host>`, then open `http://localhost:8765`).
+>
+> Every load gathers fresh from git + disk: milestone board, branch, recent commits, an
+> optional live test run, and — if a daemon state dir is present (`--state` / `$HOMIE_STATE`)
+> — the event log's activity and the lessons Homie has actually learned.
 
 ---
 
