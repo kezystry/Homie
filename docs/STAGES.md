@@ -51,8 +51,15 @@ from the cockpit (`homie` → `/steam`) or `gamescope -f -- steam -gamepadui`.
 **Install games only via Steam/Proton — never cracked repacks.**
 
 ## Stage 5 — the Layer 2 cockpit
-Shipped already (Stage 0's pull). `homie` opens the curses cockpit: status feed,
-chat with the brain, and an app launcher (`/stremio`, `/steam`, `/camera`).
-Travels over SSH for the text panes; launched apps and the camera render on the
-box's own display. The cockpit reaches the brain over a local 0600 unix socket
-(read + chat only — it can drive no actuators).
+Shipped already (Stage 0's pull). `homie` opens the curses cockpit: a status
+feed, chat with the brain, an app launcher (`/stremio`, `/steam`), and a **live
+camera pane** rendered in the terminal's own colours (no web). **Arrow keys**
+move focus between panes; **Enter** on a focused pane activates it (the camera's
+crisp full view is `mpv --vo=drm`; apps launch fullscreen). Type + Enter chats
+with the brain; `/cam` toggles the camera pane; `/help` lists commands.
+
+The camera pane stays hidden until a webcam is present, then appears on its own.
+Over SSH from a phone (256-colour) the thumbnail is a real picture; on the box's
+bare console it falls back to coarser colour. Pixels read the local device
+directly and never cross the bus. The cockpit reaches the brain over a local
+0600 unix socket (read + chat only — it can drive no actuators).

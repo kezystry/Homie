@@ -126,11 +126,13 @@ class CameraSource:
         size_fn: Callable[[], tuple[int, int]],
         interval: float = 0.4,
         grab: Optional[Callable[[str, int, int], Optional[bytes]]] = None,
+        quantize=nearest_256,
     ) -> None:
         self.device = device
         self._size_fn = size_fn
         self._interval = interval
         self._grab = grab or _ffmpeg_grab
+        self._quantize = quantize
         self._cells: Optional[list[list[int]]] = None
         self._lock = threading.Lock()
         self._thread: Optional[threading.Thread] = None
@@ -161,7 +163,7 @@ class CameraSource:
                 rgb = self._grab(self.device, cols, rows)
                 if rgb is not None:
                     try:
-                        grid = frame_to_cells(rgb, cols, rows)
+                        grid = frame_to_cells(rgb, cols, rows, self._quantize)
                     except ValueError:
                         grid = None
             with self._lock:
