@@ -94,6 +94,20 @@ plan in chat. Where an answer changes a prior assumption, this file wins.
 - Plan steps shipped through **M5** (295 tests) + a **box update channel** (`scripts/update.py`,
   pull→health-check→restart) — see `docs/PROGRESS.md`.
 
+## M7 interview — the Dream Journal & privacy guard (2026-06-27)
+- **Dream Journal = BOTH surfaces.** (1) A **morning recap** — a short plain-language note of
+  yesterday ("Tuesday. Out 9–6. Stayed quiet, lit the kitchen at dusk, you corrected the
+  hallway"). (2) An **anytime "what Homie knows about me" page** — every routine/preference it
+  currently believes, in plain words, **correctable** (ties to the trust screen + `memory.overlay`).
+- **Proactivity = ask-once-then-act, growing to autonomous.** When confident about a routine,
+  Homie **offers** to act ("want me to warm the lights at 7?"); on a yes it does it automatically
+  thereafter — **until it's smart enough to decide on its own** (the autonomy ladder; gated, never
+  a silent new device power without the owner's yes).
+- **Unknown person at a watched entrance (front door / upstairs entrance only) = log-quietly,
+  speak-only-if-odd.** Keep a quiet log of every unknown for later review; **speak up only when the
+  timing/pattern is genuinely unusual or clearly wrong** (options 2+3 combined). Never a chatty
+  who-comes-and-goes feed. Mum's flat remains OFF-LIMITS (no camera, no presence, unrepresentable).
+
 ## Still open / to confirm later
 - The owner's interview is captured; remaining specifics (exact DHL access, KartenWerk
   marketplace APIs, day-type calendar for memory, half-life tuning) are deferred to their tiles.
