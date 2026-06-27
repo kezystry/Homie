@@ -53,8 +53,8 @@ else:
     raise SystemExit("   flake.nix: no anchor to insert ./apps.nix — add it by hand")
 PY
 
-nixos-rebuild switch --flake "$NIXOS#homie" \
-  --extra-experimental-features 'nix-command flakes'
+NIX_CONFIG="experimental-features = nix-command flakes" \
+  nixos-rebuild switch --flake "$NIXOS#homie"
 echo "   rebuild complete"
 
 # ── 4. Confirm the GPU is live ────────────────────────────────────────────────
