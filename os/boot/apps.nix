@@ -68,7 +68,11 @@ in
   # [ "nvidia" ]` set in nvidia-cuda.nix. X and gamescope coexist fine — only one
   # owns the display at a time (sequential), never both at once.
   # ---------------------------------------------------------------------------
-  services.xserver.enable = true;
+  # mkForce: configuration.nix (the headless base) sets `services.xserver.enable
+  # = false`; this app layer opts X back in for on-demand startx, so it must win
+  # the merge. Without mkForce the whole rebuild fails with a conflict error and
+  # the old (broken) homie-watch silently stays in place.
+  services.xserver.enable = lib.mkForce true;
   services.xserver.displayManager.startx.enable = true;
 
   # ---------------------------------------------------------------------------
