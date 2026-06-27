@@ -77,6 +77,21 @@ SYSTEM_PROMPT = (
     "no way to control locks, heating, or anything safety-critical, and must not try."
 )
 
+# Chat is a different mode from ambient novelty-watching: the resident is talking
+# TO Homie and expects an answer. Still the same structural safety — any action
+# goes through a validated tool call, never a direct actuator path.
+CHAT_SYSTEM_PROMPT = (
+    "You are Homie, a private, local home intelligence. The resident is talking to "
+    "you directly. Answer briefly and helpfully in one or two sentences. If they ask "
+    "you to do something you have a tool for (e.g. lights or a scene), call exactly "
+    "one tool. You cannot control locks, heating, or anything safety-critical, and "
+    "must not try — say so plainly if asked."
+)
+
+# The topic the cockpit publishes a typed line on, and the topic Homie replies on.
+CHAT_IN = "chat.message"
+CHAT_REPLY = "chat.reply"
+
 
 class ToolCall(NamedTuple):
     name: str
@@ -140,6 +155,8 @@ class Reason:
 
     async def start(self) -> None:
         self._subs = [self.bus.subscribe(p, self._on_event, owner="reason") for p in PERCEPTION]
+        # The cockpit chat seam: a typed line from the resident, answered directly.
+        self._subs.append(self.bus.subscribe(CHAT_IN, self._on_chat, owner="reason"))
 
     async def stop(self) -> None:
         for s in self._subs:
@@ -172,16 +189,47 @@ class Reason:
             return
         if proposal.say:
             await self.bus.publish(Event("interface.say", event.ts, {"text": proposal.say}, source="reason"))
-        call = proposal.tool_call
+        await self._execute_validated_call(proposal.tool_call, tools)
+
+    async def _execute_validated_call(self, call: ToolCall | None, tools: list[dict]) -> bool:
+        """Validate a model-proposed tool call against the live catalog and, if it
+        passes, run it through the owning tile. Reason holds no actuator path of its
+        own — the tile acts only through ITS declared actuators, arbitrated by the
+        bus. Returns whether a call was executed."""
         if call is None:
-            return
+            return False
         errors = validate_tool_call(tools, call.name, call.arguments)
         if errors:  # hallucinated / malformed — rejected, never executed
             log.warning("reason: rejected tool call %s%r: %s", call.name, call.arguments, "; ".join(errors))
-            return
+            return False
         try:
-            # the tile runs the function and acts only through ITS declared actuators,
-            # arbitrated by the bus — Reason holds no actuator path of its own.
             await self.sup.call_function(call.name, **call.arguments)
+            return True
         except Exception as ex:
             log.warning("reason: tool call %s failed (%r)", call.name, ex)
+            return False
+
+    async def _on_chat(self, event: Event) -> None:
+        text = (event.payload or {}).get("text")
+        if isinstance(text, str) and text.strip():
+            await self.answer_chat(text.strip(), event.ts)
+
+    async def answer_chat(self, text: str, ts: float) -> None:
+        """Answer a typed line from the resident. Same structural safety as decide():
+        any action is a VALIDATED tool call through a tile, never a direct actuator
+        path. The reply goes back on `chat.reply` for the cockpit to render."""
+        tools = self.sup.tool_catalog()
+        try:
+            proposal = await self.llm.propose(system=CHAT_SYSTEM_PROMPT, context={"chat": text}, tools=tools)
+        except Exception as ex:  # a model/serving failure must never crash the bus
+            log.warning("reason: chat propose failed (%r); apologising", ex)
+            await self.bus.publish(Event(CHAT_REPLY, ts, {"text": "Sorry — I couldn't answer just now."}, source="reason"))
+            return
+        if proposal is None:
+            return
+        reply = (proposal.say or "").strip()
+        acted = await self._execute_validated_call(proposal.tool_call, tools)
+        if not reply and acted:
+            reply = "Done."
+        if reply:
+            await self.bus.publish(Event(CHAT_REPLY, ts, {"text": reply}, source="reason"))

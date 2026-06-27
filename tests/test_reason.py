@@ -201,5 +201,79 @@ class CortexTests(unittest.IsolatedAsyncioTestCase):
             await bus.aclose()
 
 
+class FailLLM:
+    async def propose(self, *, system, context, tools) -> Proposal:
+        raise RuntimeError("serving down")
+
+
+class CortexChatTests(unittest.IsolatedAsyncioTestCase):
+    async def _reason(self, llm, catalog=CATALOG):
+        bus = Bus()
+        reason = Reason(bus, llm, SpySupervisor(catalog), FakeRemember(NOVEL))
+        await reason.start()
+        return bus, reason
+
+    async def test_chat_reply_is_published_and_drives_nothing(self) -> None:
+        llm = FakeLLM([Proposal(say="The doors are locked.")])
+        bus, reason = await self._reason(llm)
+        replies, acts = [], []
+        bus.subscribe("chat.reply", collect(replies))
+        bus.subscribe("actuator.requested", collect(acts))
+        await bus.publish(Event("chat.message", 5.0, {"text": "are the doors locked?"}))
+        await bus.drain()
+        self.assertEqual(len(replies), 1)
+        self.assertEqual(replies[0].payload["text"], "The doors are locked.")
+        self.assertEqual(replies[0].source, "reason")
+        self.assertEqual(acts, [])
+        # the chat prompt was used, not the ambient one
+        self.assertEqual(llm.calls[0]["context"], {"chat": "are the doors locked?"})
+        await reason.stop()
+        await bus.aclose()
+
+    async def test_chat_tool_call_acts_and_acknowledges(self) -> None:
+        llm = FakeLLM([Proposal(tool_call=ToolCall("add_reminder", {"text": "milk"}))])
+        bus, reason = await self._reason(llm)
+        replies, acts = [], []
+        bus.subscribe("chat.reply", collect(replies))
+        bus.subscribe("actuator.requested", collect(acts))
+        await bus.publish(Event("chat.message", 6.0, {"text": "remind me to buy milk"}))
+        await bus.drain()
+        self.assertEqual(reason.sup.called, [("add_reminder", {"text": "milk"})])
+        self.assertEqual(len(replies), 1)
+        self.assertEqual(replies[0].payload["text"], "Done.")
+        self.assertEqual(acts, [])  # never a direct actuator path
+        await reason.stop()
+        await bus.aclose()
+
+    async def test_chat_invalid_tool_call_is_blocked(self) -> None:
+        llm = FakeLLM([Proposal(tool_call=ToolCall("launch_missiles", {}))])
+        bus, reason = await self._reason(llm)
+        await bus.publish(Event("chat.message", 7.0, {"text": "do the thing"}))
+        await bus.drain()
+        self.assertEqual(reason.sup.called, [])  # validation blocked it
+        await reason.stop()
+        await bus.aclose()
+
+    async def test_chat_serving_failure_apologises(self) -> None:
+        bus, reason = await self._reason(FailLLM())
+        replies: list = []
+        bus.subscribe("chat.reply", collect(replies))
+        await bus.publish(Event("chat.message", 8.0, {"text": "hello?"}))
+        await bus.drain()
+        self.assertEqual(len(replies), 1)
+        self.assertIn("Sorry", replies[0].payload["text"])
+        await reason.stop()
+        await bus.aclose()
+
+    async def test_blank_chat_is_ignored(self) -> None:
+        llm = FakeLLM([Proposal(say="should not happen")])
+        bus, reason = await self._reason(llm)
+        await bus.publish(Event("chat.message", 9.0, {"text": "   "}))
+        await bus.drain()
+        self.assertEqual(llm.calls, [])  # never woke the model
+        await reason.stop()
+        await bus.aclose()
+
+
 if __name__ == "__main__":
     unittest.main()
