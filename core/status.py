@@ -125,6 +125,27 @@ def _count_lines(path: Path) -> int:
         return 0
 
 
+def _last_event_payload(state: Path, topic: str) -> dict | None:
+    """The payload of the most recent event on `topic` in the log (or None). A cheap
+    substring prefilter keeps this from JSON-parsing every line of a long log."""
+    found: dict | None = None
+    for f in sorted(state.glob("events*.jsonl")):
+        try:
+            with f.open("r", encoding="utf-8") as fh:
+                for line in fh:
+                    if topic not in line:
+                        continue
+                    try:
+                        ev = json.loads(line)
+                    except ValueError:
+                        continue
+                    if ev.get("topic") == topic and isinstance(ev.get("payload"), dict):
+                        found = ev["payload"]
+        except OSError:
+            continue
+    return found
+
+
 def runtime_facts(state_dir: Path | None) -> dict:
     """Best-effort facts from a daemon state directory: how much it has lived (event log)
     and what its tiles have actually learned. Absent/unreadable -> {'present': False}."""
@@ -167,6 +188,17 @@ def runtime_facts(state_dir: Path | None) -> dict:
         for room, hours in sorted(suppressed.items()):
             lessons.append({"tile": tile, "room": room, "hours": sorted(hours)})
     facts["lessons"] = lessons
+
+    # Serving health (M6): the latest reason.served telemetry — how quick the brain was on
+    # its last wake, the rolling p95, whether it met the SLO, and the GPU's warm state.
+    served = _last_event_payload(state, "reason.served")
+    if served:
+        facts["serving"] = {
+            "latency_ms": served.get("latency_ms"),
+            "p95_ms": served.get("p95_ms"),
+            "slo_met": served.get("slo_met"),
+            "warm": served.get("warm"),
+        }
     return facts
 
 
@@ -234,9 +266,20 @@ def render_html(facts: dict, *, live: bool = False, refresh: int = 10) -> str:
             lessons_html = f"<ul class='lessons'>{litems}</ul>"
         else:
             lessons_html = '<p class="muted">no lessons learned yet</p>'
+        sv = rt.get("serving")
+        if sv:
+            warm = "warm" if sv.get("warm") else "asleep"
+            slo = "within target" if sv.get("slo_met") else "over target"
+            serving_html = (
+                f'<h3>Brain speed</h3><p>last answer <b>{_e(sv.get("latency_ms"))} ms</b> '
+                f'({_e(slo)}) · p95 <span class="muted">{_e(sv.get("p95_ms"))} ms</span> · '
+                f'GPU <span class="muted">{_e(warm)}</span></p>')
+        else:
+            serving_html = ""
         runtime_html = (
             f'<p><b>{_e(ev.get("count", 0))}</b> events logged · last activity '
             f'<span class="muted">{_e(last)}</span></p>'
+            f'{serving_html}'
             f'<h3>What Homie has learned</h3>{lessons_html}'
             f'<p class="muted tiny">{_e(rt.get("path",""))}</p>')
     else:
@@ -348,6 +391,12 @@ def render_text(facts: dict, *, color: bool = True, width: int = 64) -> str:
     if rt.get("present"):
         ev = rt.get("events", {})
         L.append(f"  {ev.get('count', 0)} events · last {c(ev.get('last_activity') or '—', 'dim')}")
+        sv = rt.get("serving")
+        if sv:
+            warm = "warm" if sv.get("warm") else "asleep"
+            slo_key = "ok" if sv.get("slo_met") else "blocked"
+            L.append(f"  brain {c(str(sv.get('latency_ms')) + 'ms', slo_key)} last · "
+                     f"p95 {c(str(sv.get('p95_ms')) + 'ms', 'dim')} · GPU {c(warm, 'dim')}")
         lessons = rt.get("lessons") or []
         if lessons:
             L.append(c("  what Homie has learned:", "dim"))

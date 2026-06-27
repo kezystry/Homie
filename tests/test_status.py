@@ -67,6 +67,25 @@ class RuntimeFactsTests(unittest.TestCase):
             rooms = {(l["room"], tuple(l["hours"])) for l in rt["lessons"]}
             self.assertEqual(rooms, {("kitchen", (19,)), ("den", (7, 23))})
 
+    def test_surfaces_latest_serving_telemetry(self) -> None:
+        with TemporaryDirectory() as d:
+            state = Path(d)
+            (state / "events.jsonl").write_text(
+                '{"topic":"presence.arrived","ts":1.0,"payload":{"zone":"living"},"source":"x"}\n'
+                '{"topic":"reason.served","ts":2.0,"payload":{"latency_ms":900.0,"p95_ms":1200.0,"slo_met":true,"warm":true},"source":"reason"}\n'
+                '{"topic":"reason.served","ts":3.0,"payload":{"latency_ms":1500.0,"p95_ms":1500.0,"slo_met":false,"warm":true},"source":"reason"}\n',
+                "utf-8")
+            rt = S.runtime_facts(state)
+            self.assertEqual(rt["serving"]["latency_ms"], 1500.0)  # the LATEST one
+            self.assertFalse(rt["serving"]["slo_met"])
+            self.assertTrue(rt["serving"]["warm"])
+
+    def test_no_serving_key_without_telemetry(self) -> None:
+        with TemporaryDirectory() as d:
+            state = Path(d)
+            (state / "events.jsonl").write_text('{"topic":"tick.minute","ts":1.0,"payload":{},"source":"clock"}\n', "utf-8")
+            self.assertNotIn("serving", S.runtime_facts(state))
+
 
 class RenderTests(unittest.TestCase):
     def _facts(self, **over):
