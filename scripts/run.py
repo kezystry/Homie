@@ -84,7 +84,7 @@ async def main() -> None:
     remember.attach(bus)  # keep learning from live perception
     consent = Consent(bus)  # the confirmation gate (answered by gesture/voice)
     await consent.start()
-    sup = Supervisor(ROOT / "tiles", bus, remember=remember, consent=consent)
+    sup = Supervisor(ROOT / "tiles", bus, remember=remember, consent=consent, state_root=STATE)
     await sup.start_all()
     await _maybe_start_reason(bus, sup, remember)  # cortex iff HOMIE_LLM_URL is set
     print(f"homie: up with tiles {sup.status()}", flush=True)
