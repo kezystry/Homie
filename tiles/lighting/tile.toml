@@ -1,0 +1,39 @@
+# Lighting — presence-driven, pattern-gated room lighting that learns from friction.
+# The "organism comes alive" tile: it acts at AMBIENT priority so any SECURITY or
+# SAFETY decision on the same bulb wins arbitration, and a reversal teaches it to
+# stop lighting a room at that time of day.
+
+[tile]
+name = "lighting"
+summary = "Presence-driven, after-dark room lighting that learns from reversals."
+
+[subscribes]
+events = ["presence.arrived", "presence.departed", "occupancy.changed"]
+
+[provides]
+intents = ["lights on", "lights off"]
+
+[[provides.functions]]
+name = "light_room"
+description = "Turn a room's light on or off on request (the only way to light a request-only room such as the bedroom)."
+[[provides.functions.params]]
+name = "room"
+type = "string"
+description = "The room/zone to control (e.g. living, kitchen, bedroom)."
+required = true
+[[provides.functions.params]]
+name = "on"
+type = "boolean"
+description = "True to turn on, False to turn off."
+required = true
+
+[acts]
+actuators = ["light.living", "light.kitchen", "light.hallway", "light.bedroom"]
+priority = "ambient"               # auto-on rides below SECURITY/AUTOMATION
+
+[acts.priorities]
+"light.bedroom" = "convenience"    # bedroom is request-only; a deliberate ask ranks above ambient
+
+[permissions]
+reads = ["presence", "occupancy"]
+network = "local"

@@ -16,6 +16,7 @@
         modules = [
           ./configuration.nix
           ./hardware-configuration.nix
+          ./nvidia-cuda.nix
         ];
       };
     };

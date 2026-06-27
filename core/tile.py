@@ -396,9 +396,10 @@ class InProcessChannel:
     """Default. Loads the tile into the Supervisor's process and drives the
     protocol in memory. Restart = reload the module + reinstantiate."""
 
-    def __init__(self, manifest: Manifest, ctx: Context) -> None:
+    def __init__(self, manifest: Manifest, ctx: Context, *, state_dir: Path | None = None) -> None:
         self.manifest = manifest
         self.ctx = ctx
+        self._state_dir = Path(state_dir) if state_dir else manifest.path / "state"
         self._tile: Tile | None = None
         self._learn: Callable | None = None
         self._health: Callable | None = None
@@ -406,7 +407,7 @@ class InProcessChannel:
 
     async def start(self) -> None:
         tile_cls, learn_fn, health_fn = load_tile(self.manifest)
-        self._state = TileState(self.manifest.path / "state")
+        self._state = TileState(self._state_dir)
         tile = tile_cls()
         tile.manifest = self.manifest
         tile.state = self._state
@@ -446,10 +447,11 @@ class SubprocessChannel:
 
     _ROOT = Path(__file__).resolve().parents[1]
 
-    def __init__(self, manifest: Manifest, ctx: Context, *, call_timeout: float = 10.0) -> None:
+    def __init__(self, manifest: Manifest, ctx: Context, *, call_timeout: float = 10.0, state_dir: Path | None = None) -> None:
         self.manifest = manifest
         self.ctx = ctx
         self.call_timeout = call_timeout  # kill a child that wedges past this
+        self._state_dir = Path(state_dir) if state_dir else manifest.path / "state"
         self._proc: asyncio.subprocess.Process | None = None
         self._lock: asyncio.Lock | None = None
 
@@ -466,7 +468,7 @@ class SubprocessChannel:
             env={**os.environ, "PYTHONPATH": str(self._ROOT)},
         )
         await self._exchange(
-            {"type": "init", "name": self.manifest.name, "state_dir": str(self.manifest.path / "state")},
+            {"type": "init", "name": self.manifest.name, "state_dir": str(self._state_dir)},
             {"ready"},
         )
 
@@ -538,11 +540,11 @@ class SubprocessChannel:
             self.ctx.log(m["level"], m["msg"])
 
 
-def channel_for(manifest: Manifest, ctx: Context) -> TileChannel:
+def channel_for(manifest: Manifest, ctx: Context, state_dir: Path | None = None) -> TileChannel:
     """Pick the transport from the manifest — the single isolation switch."""
     if manifest.needs_isolation:
-        return SubprocessChannel(manifest, ctx)
-    return InProcessChannel(manifest, ctx)
+        return SubprocessChannel(manifest, ctx, state_dir=state_dir)
+    return InProcessChannel(manifest, ctx, state_dir=state_dir)
 
 
 # --------------------------------------------------------------------------- #
@@ -581,8 +583,13 @@ class Supervisor:
     routes events and friction. Routing is built from manifests; only the channel
     loader ever touches tile code."""
 
-    def __init__(self, tiles_dir: Path, bus, policy: SupervisionPolicy | None = None, *, remember=None, consent=None) -> None:
+    def __init__(self, tiles_dir: Path, bus, policy: SupervisionPolicy | None = None, *, remember=None, consent=None, state_root: Path | None = None) -> None:
         self.tiles_dir = Path(tiles_dir)
+        # Where tiles keep their writable state. Under the hardened service
+        # /opt/homie is read-only (ProtectSystem=strict); state must live in
+        # $HOMIE_STATE (/var/lib/homie). Default None keeps the dev/test layout
+        # (state beside the tile) so the suite is unchanged.
+        self.state_root = Path(state_root) if state_root else None
         self.bus = bus
         self.policy = policy or SupervisionPolicy()
         self.remember = remember  # Behavioral Analysis, exposed to tiles via ctx.recall
@@ -590,6 +597,14 @@ class Supervisor:
         self._tiles: dict[str, TileRecord] = {}
         self._ledger: list[ActionRef] = []  # recent acts, for friction attribution
         self._manual: dict[str, list[float]] = {}  # windowed manual-action times, for repeat detection
+
+    def _state_dir(self, manifest: Manifest) -> Path:
+        """A tile's writable state dir. Under a configured state_root it lives in
+        $HOMIE_STATE/tiles/<name>/state (writable on the hardened OS); otherwise
+        beside the tile (dev/test default)."""
+        if self.state_root is not None:
+            return self.state_root / "tiles" / manifest.name / "state"
+        return manifest.path / "state"
 
     # discovery — manifests only, no tile code
     def discover(self) -> list[Manifest | InvalidManifest]:
@@ -624,7 +639,7 @@ class Supervisor:
             log.warning("tile %s invalid: %s", name, "; ".join(clashes))
             return
         ctx = self._make_ctx(manifest)
-        channel = channel_for(manifest, ctx)
+        channel = channel_for(manifest, ctx, self._state_dir(manifest))
         await channel.start()
         rec = TileRecord(name, manifest, channel, ctx, "READY")
         self._tiles[name] = rec

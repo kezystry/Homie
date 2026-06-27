@@ -35,7 +35,7 @@ Python 3.11+, standard library only — no dependencies to run the spine.
 
 ```sh
 git clone https://github.com/kezystry/homie.git && cd homie
-python3 -m unittest discover -s tests   # the test suite (108 tests)
+python3 -m unittest discover -s tests   # the test suite (169 tests)
 python3 scripts/spine_demo.py           # the loop, end to end on one node
 python3 scripts/run.py                  # the daemon (bus + Remember + Supervisor + tiles)
 ```
@@ -49,12 +49,13 @@ writes to it. See **[os/INSTALL.md](os/INSTALL.md)**.
 
 ## Status
 
-The reasoning-node spine runs and is tested (**108 stdlib tests**). Built and
+The reasoning-node spine runs and is tested (**169 stdlib tests**). Built and
 working today: the asyncio event bus with priority arbitration and a crash-safe
 durability log, Behavioral Analysis (the pattern-of-life model, with decay), the
 tile runtime (in-process + subprocess isolation, supervision, self-healing), the
-Personal and Security tiles, the friction-learning loop, tool-call validation, the
-confirmation gate, and the encrypted mesh bridge.
+Personal, Security, and Lighting tiles (presence-driven lighting that learns from
+reversals), the friction-learning loop with home-echo canonicalization, tool-call
+validation, the confirmation gate, and the encrypted mesh bridge.
 
 The outward edges are next, and gated on hardware in front of you: local LLM
 reasoning, Home Assistant control, voice + gestures, the perception/camera head,
@@ -66,8 +67,8 @@ the Noise mesh transport, and the nightly consolidation ritual. The order is in
 ```
 core/        the spine: bus, remember, tile runtime, act, reason, reconcile,
              consent, mesh, perceive, interface
-tiles/       living tiles (personal, security) + _template for new ones
-tests/       stdlib unittest suite (108 passing)
+tiles/       living tiles (personal, security, lighting) + _template for new ones
+tests/       stdlib unittest suite (169 passing)
 scripts/     run.py (daemon) · spine_demo.py (end-to-end demo)
 os/          dual-boot NixOS profile + INSTALL.md
 deploy/      runtime config (e.g. act_map.toml)
@@ -84,6 +85,7 @@ obsidian/    the same notes as a cross-linked, importable Obsidian vault
 - [docs/PROTOCOL.md](docs/PROTOCOL.md) — the tile wire protocol
 - [docs/SECURITY.md](docs/SECURITY.md) — privacy, encryption, identity scope
 - [docs/PLAN.md](docs/PLAN.md) — the hardware build plan (always-on topology + question bank)
+- [docs/WALKTHROUGH.md](docs/WALKTHROUGH.md) — the guided, checkpointed OS install (start here to install)
 - [docs/BRINGUP.md](docs/BRINGUP.md) — the order to make the software physical
 - [docs/ROADMAP.md](docs/ROADMAP.md) — the build order
 - [docs/BACKLOG.md](docs/BACKLOG.md) — the audit backlog (bugs / fixes / upgrades)

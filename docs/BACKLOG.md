@@ -124,3 +124,26 @@ wiring, the nightly-ritual systemd units, and OS validation.**
 - The pattern-decay step in `Remember` (self-learning) — pairs with the ritual.
 - Atomic `TileState.put` + `/opt/homie` as a Nix derivation (self-upgrading/healing).
 - Persisted/encrypted off-box backup of `/var/lib/homie` (self-sufficiency).
+
+### OS bring-up — needs a hardening pass (from the adversarial OS-kit workflow)
+These three OS-side artifacts were designed but **failed adversarial review** and are
+NOT in the tree yet — they need redesign before they're safe to ship. None blocks the
+first install (the daemon runs from `/opt/homie` with the manual `cp -a`, no ritual/
+backup needed for first boot). What landed and passed review: `core/reason.py` (safety
+audit ✓), `deploy/llm.py` + the `run.py` cortex wiring, and `os/boot/nvidia-cuda.nix`
+(VM-validate in the Phase 1 build-vm).
+- **Nightly-ritual systemd (`ritual.sh` + units).** *Data loss every run:* the wrapper
+  ran `consolidate()` from a SECOND process while the daemon holds `events.jsonl` open
+  → racing compaction. *Fix:* run consolidate IN the daemon (the single fd owner) — the
+  timer signals the running `homie.service` (systemd-notify / SIGUSR1 / control socket);
+  the wrapper only enacts `restart_decision`. Also: cross-user flock ownership; the
+  daemon's `_housekeep` must share the same lock.
+- **Off-box backup (`backup.sh` + `backup.nix`).** SSH can't work under `ProtectHome=true`
+  (hides the key); the `homie` group doesn't exist (it's `users`); benign concurrent-
+  compaction warnings become hard failures. *Fix:* `BORG_RSH` with a key path outside
+  `$HOME` (e.g. `/var/lib/homie-backup/ssh`) + a tmpfiles rule; correct the group.
+- **`/opt/homie` as a Nix derivation (`homie-pkg.nix`).** The launcher's symlink strategy
+  is defeated by `run.py`'s `Path(__file__).resolve().parents[1]` (resolve follows the
+  symlink into the read-only store → can't write state; fails under `ProtectSystem=strict`
+  as non-root). *Fix:* copy code as real writable files into the app root, or adjust
+  `run.py`'s root resolution. Keep the manual `/opt/homie` until then.
