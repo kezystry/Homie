@@ -31,12 +31,27 @@ def _is_dark(ts: float) -> bool:
     return h >= DARK_AFTER or h < DARK_BEFORE
 
 
+def _off_key(room: str) -> str:
+    return f"lighting.off.{room}"
+
+
 class Lighting(Tile):
     async def on_event(self, event: Event, ctx: Context) -> None:
         if event.topic == "presence.arrived":
             await self._maybe_on(event, ctx)
+        elif event.topic == "timer.fired":
+            await self._on_off_timer(event, ctx)
         else:  # presence.departed / occupancy.changed
             await self._maybe_off(event, ctx)
+
+    def _armed(self) -> set:
+        # ephemeral per-instance set of rooms with a pending auto-off timer. NOT
+        # persisted: a restart cancels the Clock's pending timers, and the next
+        # vacancy event simply re-arms — so a stale "armed" flag can never strand a
+        # light on.
+        if not hasattr(self, "_arming"):
+            self._arming: set = set()
+        return self._arming
 
     async def _maybe_on(self, event: Event, ctx: Context) -> None:
         room = event.payload.get("zone")
@@ -55,18 +70,26 @@ class Lighting(Tile):
         room = event.payload.get("zone")
         if not room or f"light.{room}" not in ctx.manifest.actuators:
             return
-        vacated = dict(self.state.get("vacated", {}))
+        armed = self._armed()
         if event.payload.get("occupied", False):
-            if vacated.pop(room, None) is not None:  # re-occupied: cancel pending auto-off
-                await self.state.put("vacated", vacated)
+            if room in armed:  # re-occupied: cancel the pending auto-off
+                armed.discard(room)
+                await ctx.emit(Event("timer.cancel", event.ts, {"key": _off_key(room)}))
             return
-        since = vacated.get(room)
-        if since is None:  # first sign of vacancy — arm the timer
-            vacated[room] = event.ts
-            await self.state.put("vacated", vacated)
-        elif event.ts - since >= OFF_WINDOW:  # stayed empty long enough — turn it off
-            vacated.pop(room, None)
-            await self.state.put("vacated", vacated)
+        # Vacancy: arm a real timer so the light turns off even if the room then goes
+        # completely silent (no further events) — the N1 fix. Arm once per vacancy.
+        if room not in armed:
+            armed.add(room)
+            await ctx.emit(Event("timer.set", event.ts,
+                                 {"after": OFF_WINDOW, "key": _off_key(room), "data": {"room": room}}))
+
+    async def _on_off_timer(self, event: Event, ctx: Context) -> None:
+        data = event.payload.get("data") or {}
+        room = data.get("room")
+        if not room or event.payload.get("key") != _off_key(room):
+            return  # not our auto-off timer
+        self._armed().discard(room)
+        if f"light.{room}" in ctx.manifest.actuators:  # still ours to control
             await ctx.act(f"light.{room}", {"state": "off"})
 
     async def light_room(self, ctx: Context, room: str, on: bool) -> None:

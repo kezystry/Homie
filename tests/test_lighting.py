@@ -124,16 +124,25 @@ class LightingTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(acts), 1)  # a guest's correction is not a household preference
             await bus.aclose()
 
-    async def test_auto_off_after_window(self) -> None:
+    async def test_vacancy_arms_timer_then_fires_off(self) -> None:
+        # The N1 fix: vacancy ARMS a Clock timer (timer.set), and when that timer
+        # fires the light goes off — even with no further zone events in between.
         with TemporaryDirectory() as d:
             root = Path(d)
             bus, sup, acts = await self._sup(root)
+            sets: list[Event] = []
+            bus.subscribe("timer.set", collect(sets))
             await bus.publish(Event("occupancy.changed", 1000.0, {"zone": "living", "occupied": False}))
             await bus.drain()
             self.assertEqual(acts, [])  # armed, not yet off
-            await bus.publish(Event("occupancy.changed", 1000.0 + 601, {"zone": "living", "occupied": False}))
+            self.assertEqual(len(sets), 1)
+            self.assertEqual(sets[0].payload["key"], "lighting.off.living")
+            self.assertEqual(sets[0].payload["after"], 600.0)
+            # the Clock fires the timer later (here simulated) — no other events needed
+            await bus.publish(Event("timer.fired", 1601.0, {"key": "lighting.off.living", "data": {"room": "living"}}))
             await bus.drain()
             self.assertEqual(len(acts), 1)
+            self.assertEqual(acts[0].payload["actuator"], "light.living")
             self.assertEqual(acts[0].payload["value"], {"state": "off"})
             await bus.aclose()
 
@@ -141,11 +150,16 @@ class LightingTests(unittest.IsolatedAsyncioTestCase):
         with TemporaryDirectory() as d:
             root = Path(d)
             bus, sup, acts = await self._sup(root)
+            cancels: list[Event] = []
+            bus.subscribe("timer.cancel", collect(cancels))
             await bus.publish(Event("occupancy.changed", 1000.0, {"zone": "living", "occupied": False}))
             await bus.publish(Event("occupancy.changed", 1100.0, {"zone": "living", "occupied": True}))
-            await bus.publish(Event("occupancy.changed", 2000.0, {"zone": "living", "occupied": False}))
             await bus.drain()
-            self.assertEqual(acts, [])  # the timer was reset by re-occupancy, so nothing turned off
+            self.assertEqual(len(cancels), 1)  # re-occupancy cancels the pending auto-off
+            self.assertEqual(cancels[0].payload["key"], "lighting.off.living")
+            # even if a stray timer.fired arrived after the cancel, the room is occupied;
+            # but normally the Clock dropped it — assert no off was issued
+            self.assertEqual(acts, [])
             await bus.aclose()
 
     async def test_security_request_outranks_ambient_light(self) -> None:
