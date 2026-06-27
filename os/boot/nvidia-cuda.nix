@@ -68,10 +68,15 @@ in
   };
 
   hardware.nvidia = {
-    # Production branch: the stable, well-tested driver — the right default for
-    # an always-on appliance. (Pinned to the running kernel's package set so the
-    # module always matches the kernel NixOS builds.)
-    package = config.boot.kernelPackages.nvidiaPackages.production;
+    # Driver branch. We use `latest` (565+) rather than `production` (550)
+    # specifically for **explicit sync**: it landed in the NVIDIA driver at 555
+    # and is what lets Wayland micro-compositors (gamescope — Stremio now, Steam
+    # later) render WITHOUT the flicker / black-frame tearing that plagues 550 on
+    # NVIDIA. The driver builds reliably from cache (unlike the CUDA toolkit), so
+    # this is a safe upgrade. (Pinned to the running kernel's package set so the
+    # module always matches the kernel NixOS builds.) If a future `latest` ever
+    # regresses on the 3060, fall back to `production`.
+    package = config.boot.kernelPackages.nvidiaPackages.latest;
 
     # Open vs proprietary KERNEL module on Ampere (RTX 3060).
     # Since driver 560 `open` has NO default on 24.11 (type nullOr bool, default
