@@ -68,15 +68,16 @@ in
   };
 
   hardware.nvidia = {
-    # Driver branch. We use `latest` (565+) rather than `production` (550)
-    # specifically for **explicit sync**: it landed in the NVIDIA driver at 555
-    # and is what lets Wayland micro-compositors (gamescope — Stremio now, Steam
-    # later) render WITHOUT the flicker / black-frame tearing that plagues 550 on
-    # NVIDIA. The driver builds reliably from cache (unlike the CUDA toolkit), so
-    # this is a safe upgrade. (Pinned to the running kernel's package set so the
-    # module always matches the kernel NixOS builds.) If a future `latest` ever
-    # regresses on the 3060, fall back to `production`.
-    package = config.boot.kernelPackages.nvidiaPackages.latest;
+    # Driver branch: production (550) — the KNOWN-GOOD display path on this 3060.
+    # We tried `latest` (565) for gamescope's Wayland explicit sync, but 565 went
+    # "NO SIGNAL" on the HDMI output with BOTH the open AND proprietary kernel
+    # modules (system stayed up, reachable over SSH) — a 565/3060 display
+    # regression on this kernel, not a config knob. So we stay on production for a
+    # reliable console + display. The Wayland flicker under gamescope that 565
+    # would have fixed is instead side-stepped by running GUI apps (Stremio) under
+    # a minimal X session, where NVIDIA 550 is rock-solid. Revisit a newer driver
+    # only if a future one is confirmed to drive this display.
+    package = config.boot.kernelPackages.nvidiaPackages.production;
 
     # Open vs proprietary KERNEL module on Ampere (RTX 3060).
     # Since driver 560 `open` has NO default on 24.11 (type nullOr bool, default
@@ -86,14 +87,10 @@ in
     # the one knob to flip to `false` for the known-good proprietary module.
     # VM-VALIDATE: which module loads cleanly is only provable on the 3060.
     #
-    # REGRESSED AT 565 ON THE 3060 (confirmed on the box): with the OPEN module,
-    # driver 565 created the nvidia-drm framebuffer but never drove the HDMI
-    # output -> "NO SIGNAL" on the console the moment nvidia-drm took over from
-    # simpledrm (system stayed up; reachable over SSH). The open module was fine
-    # at 550 but not at 565 here. The proprietary module drives the display
-    # correctly and KEEPS explicit sync (a driver-level feature, not module-
-    # specific), so gamescope still renders flicker-free. Hence: false.
-    open = false;
+    # Open module is the known-good display path AT 550 on this 3060 — keep it.
+    # (At 565 BOTH open and proprietary lost the HDMI signal, so the module was
+    # never the cause there; the 565 driver was. See the driver-branch note.)
+    open = true;
 
     # Kernel modesetting — needed for a working console framebuffer (the only
     # screen Homie uses: pulled camera frames / faces) and required by the open
