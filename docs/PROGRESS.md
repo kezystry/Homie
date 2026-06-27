@@ -5,8 +5,13 @@ the **what & why**; this file is the **how it's going**. Updated every time a mi
 lands or a decision is taken.*
 
 - **Branch:** `claude/homie-overview-bo4l8v`
-- **Tests:** 295 passing (`python3 -m unittest discover -s tests`) — green on every push
-- **Last updated:** 2026-06-27, after M5 (capability gate shipped); M6 next
+- **Tests:** 305 passing (`python3 -m unittest discover -s tests`) — green on every push
+- **Last updated:** 2026-06-27, after M5 + Step 0 (the box's update channel); M6 next
+
+> **Updating the Homie box.** The box runs a git checkout at `/opt/homie`; update with
+> `python3 scripts/update.py` (pulls + runs the suite as a health check, reports safe/not),
+> then `sudo systemctl restart homie`. Roll back with `git reset --hard HEAD@{1}`. This is
+> the channel the nightly self-upgrade (M11) builds on. Full steps: `os/INSTALL.md`.
 
 > **Live status page.** This board is the source-of-truth prose; for an at-a-glance page
 > that regenerates itself:

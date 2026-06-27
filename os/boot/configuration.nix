@@ -79,7 +79,9 @@
   # The Homie daemon: bus + Remember + Supervisor via the Python entrypoint.
   # Repo lives at /opt/homie; entrypoint is /opt/homie/scripts/run.py.
   # ---------------------------------------------------------------------------
-  environment.systemPackages = [ pkgs.python311 ];
+  # python311 runs the daemon; git is the update channel (the box is a git checkout of the
+  # repo, updated via scripts/update.py — pull + health-check + restart). See os/INSTALL.md.
+  environment.systemPackages = [ pkgs.python311 pkgs.git ];
 
   systemd.services.homie = {
     description = "Homie reasoning node (bus + Remember + Supervisor)";

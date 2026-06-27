@@ -81,8 +81,12 @@ sudo cp /path/to/homie/os/boot/configuration.nix /mnt/etc/nixos/configuration.ni
 sudo cp /path/to/homie/os/boot/flake.nix          /mnt/etc/nixos/flake.nix
 # hardware-configuration.nix stays as generated, beside these.
 
-# The daemon runs from /opt/homie:
-sudo mkdir -p /mnt/opt && sudo cp -a /path/to/homie /mnt/opt/homie
+# The daemon runs from /opt/homie. Clone it as a GIT CHECKOUT (not a copy) so the box
+# has an update channel from day one (see "Updating Homie" below):
+sudo mkdir -p /mnt/opt
+sudo git clone https://github.com/kezystry/Homie.git /mnt/opt/homie
+# (offline install? fall back to `cp -a /path/to/homie /mnt/opt/homie`, then convert it to a
+#  checkout later with the bootstrap in "Updating Homie".)
 ```
 
 Edit `/mnt/etc/nixos/configuration.nix` and fill in every `<PLACEHOLDER>`:
@@ -109,6 +113,40 @@ If the existing OS is missing from the menu: confirm it's a UEFI install, ensure
 Windows isn't hibernated, then `sudo nixos-rebuild boot` to re-run os-prober.
 os-prober mounts the other OS **read-only and transiently** — Homie never writes
 to it.
+
+## Updating Homie
+
+The box runs a **git checkout** at `/opt/homie`, so updates are pull + health-check +
+restart. The helper does the health check for you and refuses to call an update "safe"
+unless the full test suite passes:
+
+```sh
+cd /opt/homie
+python3 scripts/update.py            # pull + run the suite; reports safe / not-safe
+sudo systemctl restart homie         # apply it (or: python3 scripts/update.py --restart)
+```
+
+Roll back a bad update:
+
+```sh
+sudo git -C /opt/homie reset --hard HEAD@{1}   # previous commit
+sudo systemctl restart homie                   # (or pick an older NixOS generation at GRUB)
+```
+
+**One-time bootstrap** if an existing box has a *copied* `/opt/homie` (older installs used
+`cp -a`, which is not a git repo and cannot pull):
+
+```sh
+sudo systemctl stop homie
+sudo mv /opt/homie /opt/homie.bak                              # keep the old copy as a backup
+sudo git clone https://github.com/kezystry/Homie.git /opt/homie
+sudo chown -R homie:users /opt/homie                           # future pulls need no sudo
+sudo systemctl start homie
+```
+
+The repo is public, so the clone needs no credentials. `scripts/update.py` runs entirely on
+the box (stdlib only) and never grants Homie new authority — it only decides whether new
+*code* is safe to run; this is the channel the nightly self-upgrade (roadmap M11) builds on.
 
 ## Recovery / self-healing
 
