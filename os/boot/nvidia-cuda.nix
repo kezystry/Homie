@@ -15,10 +15,29 @@
 # only exercised against real silicon. `nixos-rebuild build-vm` proves the
 # config EVALUATES and builds, but the VM has no RTX 3060 — confirm `nvidia-smi`
 # and CUDA on the actual hardware at bring-up (see notes at the bottom).
+#
+# DRIVER vs CUDA TOOLKIT — a deliberate split. The NVIDIA *driver* (everything
+# this module enables by default) is cached on cache.nixos.org and installs
+# reliably. The *CUDA toolkit* is NOT on the cache for licensing reasons and is
+# fetched from developer.download.nvidia.com — a large, flaky download on an
+# unstable link. The desktop only needs the toolkit to serve the local LLM
+# (Stage 3); movies/Steam (Stages 2/4) need only the driver + Vulkan/GL. So the
+# heavy CUDA closure sits behind `homie.gpu.cuda.enable`, which DEFAULTS OFF:
+# a driver-only rebuild pulls nothing flaky. Flip it on for the LLM cortex.
 
 { config, lib, pkgs, ... }:
 
+let
+  cfg = config.homie.gpu;
+in
 {
+  # Off by default: pulls cudaPackages.cudatoolkit, a large unfree closure
+  # fetched from developer.download.nvidia.com (NOT cached). Leave off for a
+  # driver-only system (movies/Steam); turn on only for the LLM cortex (Stage 3).
+  options.homie.gpu.cuda.enable =
+    lib.mkEnableOption "the heavy CUDA toolkit (nvcc + runtime) for serving the local LLM";
+
+  config = {
   # ---------------------------------------------------------------------------
   # Unfree licence. The NVIDIA driver — and the proprietary userspace half even
   # of the *open* kernel module — is unfree, so nixpkgs must be allowed to build
@@ -115,9 +134,8 @@
   # heavy build here — expect a long first `nixos-rebuild`. VM-VALIDATE: confirm
   # the closure builds with `nixos-rebuild build-vm` before touching real disk.
   # ---------------------------------------------------------------------------
-  environment.systemPackages = with pkgs; [
-    cudaPackages.cudatoolkit
-  ];
+  environment.systemPackages =
+    lib.mkIf cfg.cuda.enable (with pkgs; [ cudaPackages.cudatoolkit ]);
 
   # ---------------------------------------------------------------------------
   # Make the driver's runtime libraries discoverable to dynamically-linked CUDA
@@ -126,5 +144,7 @@
   # the driver's OpenGL/driver path, but exporting CUDA_PATH gives from-source
   # builds and `nvcc` a stable toolkit root.
   # ---------------------------------------------------------------------------
-  environment.variables.CUDA_PATH = "${pkgs.cudaPackages.cudatoolkit}";
+  environment.variables.CUDA_PATH =
+    lib.mkIf cfg.cuda.enable "${pkgs.cudaPackages.cudatoolkit}";
+  };
 }
