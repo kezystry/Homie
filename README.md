@@ -35,7 +35,7 @@ Python 3.11+, standard library only — no dependencies to run the spine.
 
 ```sh
 git clone https://github.com/kezystry/homie.git && cd homie
-python3 -m unittest discover -s tests   # the test suite (225 tests)
+python3 -m unittest discover -s tests   # the test suite (270 tests)
 python3 scripts/spine_demo.py           # the loop, end to end on one node
 python3 scripts/run.py                  # the daemon (bus + Remember + Supervisor + tiles)
 ```
@@ -68,7 +68,7 @@ the Noise mesh transport, and the nightly consolidation ritual. The order is in
 core/        the spine: bus, remember, tile runtime, act, reason, reconcile,
              consent, mesh, perceive, interface
 tiles/       living tiles (personal, security, lighting) + _template for new ones
-tests/       stdlib unittest suite (225 passing)
+tests/       stdlib unittest suite (270 passing)
 scripts/     run.py (daemon) · spine_demo.py (end-to-end demo)
 os/          dual-boot NixOS profile + INSTALL.md
 deploy/      runtime config (e.g. act_map.toml)

@@ -785,6 +785,9 @@ all the time-shaped behavior the rest of the plan assumes exists.
 
 ## Sequence at a glance
 
+> **Shipped so far** (branch `claude/homie-overview-bo4l8v`, 270 tests green):
+> **M0, M1, M2, M2.5, M3**. Next: **M4** (the hour-shaped lesson, spoken back).
+
 ```
 M0  [hours]      Pi-anchor chat fallback (never silent)            → proof-of-life
 M1  [days]       KEYSTONE: build_daemon + contract/golden tests    → C1, C4, C13(in-proc)

@@ -26,7 +26,7 @@
 - **Code:** `core/` (`bus`, `remember`, `tile` runtime + channels, `mesh`, `act`,
   `reason` (cortex: novelty-gated LLM decide loop), `reconcile`, `consent`,
   `canonical`, `ritual` (nightly consolidation)), `tiles/` (`personal`, `security`,
-  `lighting`), `tests/` (225 passing), `scripts/run.py` (daemon), `scripts/spine_demo.py`.
+  `lighting`), `tests/` (270 passing), `scripts/run.py` (daemon), `scripts/spine_demo.py`.
 - **Importable notes:** `obsidian/` is a cross-linked Obsidian vault mirroring the docs.
 
 ## Decided architecture (see docs/PLAN.md)

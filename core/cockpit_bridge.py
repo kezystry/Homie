@@ -63,6 +63,7 @@ class CockpitPolicy:
         "node.**",        # mesh/node up-down for a status line
         "actuator.done",  # confirmation that an act happened (not the request)
         "tile.**",        # tile status/health
+        "wake.**",        # cortex wake telemetry: cadence/asleep-fraction (M3, read-only)
     )
     # What the cockpit may PUBLISH. Exactly the user's chat line — nothing that
     # drives an actuator, confirms a gesture, or forges perception.
