@@ -24,9 +24,28 @@
     capSysNice = true;
   };
 
+  # ---------------------------------------------------------------------------
+  # SEAT MANAGEMENT — what lets gamescope grab the display on a bare console.
+  #
+  # There is no desktop/display-manager here, so when gamescope launches from the
+  # auto-login TTY it has no "seat" (the permission to own the GPU + VT). Without
+  # one it dies with: "Could not connect to /run/seatd.sock", "failed to open
+  # seat", "Permission denied /dev/dri/cardN", "Could not open VT" -> segfault
+  # (exactly the Stage-2 first-run failure).
+  #
+  # seatd is a tiny standalone seat manager; gamescope's libseat tries it first.
+  # Enabling it (and putting `homie` in the seat + GPU/input groups) gives
+  # gamescope a seat without a full logind graphical session. Run apps as the
+  # plain `homie` user from the console — NOT via sudo, which breaks seat access.
+  # ---------------------------------------------------------------------------
+  services.seatd.enable = true;
+  users.users.homie.extraGroups = [ "video" "render" "seatd" "input" ];
+
   environment.systemPackages = with pkgs; [
     mpv      # camera view (mpv --vo=drm) and a fallback media player
     stremio  # the streaming front-end; the owner manages his own addons/accounts
+    ffmpeg   # cockpit camera: grabs single frames for the in-terminal thumbnail
+    v4l-utils  # `v4l2-ctl --list-formats-ext` to confirm a webcam speaks MJPEG
 
     # `homie-watch` — the one-line "watch movies" command (plan Stage 2). Runs
     # Stremio fullscreen under gamescope straight from the console. Extra args
