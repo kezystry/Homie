@@ -100,7 +100,9 @@ async def main(tile_dir: str) -> None:
         elif kind == "friction":
             try:
                 if s["learn"]:
-                    await s["learn"](s["state"], _friction(msg["signal"]))
+                    note = await s["learn"](s["state"], _friction(msg["signal"]))
+                    if note:  # narrate a freshly-formed lesson once, over the wire (M4)
+                        await s["ctx"].speak(note)
             except Exception as ex:
                 _write({"type": "error", "error": repr(ex)})
             else:

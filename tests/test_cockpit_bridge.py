@@ -36,6 +36,9 @@ class PolicyTests(unittest.TestCase):
         self.assertTrue(p.may_send("presence.arrived"))
         self.assertTrue(p.may_send("actuator.done"))
         self.assertTrue(p.may_send("chat.reply"))
+        self.assertTrue(p.may_send("wake.decision"))  # cortex wake telemetry (M3)
+        # the cockpit may SEE wake telemetry but may never PUBLISH it back
+        self.assertFalse(p.may_receive("wake.decision"))
         # but not raw perception internals or the act *request*
         self.assertFalse(p.may_send("actuator.requested"))
         self.assertFalse(p.may_send("sensor.camera.frame"))

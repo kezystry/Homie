@@ -14,6 +14,7 @@ consume this; thresholds/policy live in the caller.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
 import os
@@ -94,6 +95,23 @@ class PatternModel:
         days = self._days[key] * d
         rate = count / days if days > 0.0 else 0.0  # d cancels: a stopped pattern's rate holds
         return Expectation(rate=rate, count=count, days=days, novel=False)
+
+    def keys(self) -> list[Key]:
+        """The (topic, zone) keys currently held. Pure read."""
+        return list(self._w)
+
+    def decayed_weights(self, key: Key, now: float) -> list[float]:
+        """The 24-hour weight vector for `key`, aged to `now`. Pure read — a scratch
+        copy, never mutates. Returns all-zeros for an unknown key."""
+        w = self._w.get(key)
+        if not w:
+            return [0.0] * HOURS
+        d = self._factor(now - self._last[key])
+        return [x * d for x in w]
+
+    def last_update(self, key: Key) -> float | None:
+        """Epoch of the most recent observation for `key` (its 'last seen')."""
+        return self._last.get(key)
 
     def decay(self, now: float) -> None:
         """Realize decay on every key to `now` and prune those that have faded
@@ -176,6 +194,19 @@ class Remember:
         self.model = PatternModel(tz=os.environ.get("HOMIE_TZ"))  # pin the home's zone if set
 
     async def record(self, event: Event) -> None:
+        # Evaluate-then-commit (C4): anomaly evaluators (Security, Reason) must judge
+        # an event against history WITHOUT it, or the event masks its own novelty.
+        # TWO things guarantee that and BOTH are needed:
+        #   1. Remember attaches to the bus LAST (after the tiles) — see build_daemon —
+        #      so for a given event its drain task is scheduled after the evaluators'.
+        #   2. We defer the actual commit by one event-loop tick. An evaluator runs
+        #      through the tile channel, whose `asyncio.wait_for` yields the loop; that
+        #      yield would otherwise let this observe land *before* the evaluator's
+        #      `ctx.recall` reads the model. The one-tick defer keeps the commit behind
+        #      the (synchronous-to-recall) in-process evaluators.
+        # This is a one-tick ordering nicety, NOT a two-phase bus barrier (the audit's
+        # anti-goal): drain() still waits for the commit, so post-drain state is intact.
+        await asyncio.sleep(0)
         self.model.observe(event)
 
     async def normal(self, topic: str, zone: str | None, when: float) -> Expectation:
@@ -185,6 +216,33 @@ class Remember:
     def decay(self, now: float) -> None:
         """Age + prune the pattern of life (the nightly consolidation calls this)."""
         self.model.decay(now)
+
+    # -- read-only pattern-of-life queries (the anchor voice answers from these) -- #
+    def zones(self) -> list[str]:
+        """Distinct zones the pattern of life has ever seen, sorted."""
+        return sorted({z for (_t, z) in self.model.keys() if z})
+
+    def pattern_count(self) -> int:
+        """How many (topic, zone) patterns are currently held."""
+        return len(self.model.keys())
+
+    def describe_zone(self, zone: str, now: float) -> dict | None:
+        """A small human-facing summary of a zone's pattern of life: the busiest
+        hour-of-day (aggregated across topics) and when it was last seen. Returns
+        None if the zone is unknown, or {"hour": None, ...} if it has fully decayed."""
+        keys = [k for k in self.model.keys() if k[1] == zone]
+        if not keys:
+            return None
+        hours = [0.0] * HOURS
+        last: float | None = None
+        for k in keys:
+            for j, x in enumerate(self.model.decayed_weights(k, now)):
+                hours[j] += x
+            lu = self.model.last_update(k)
+            if lu is not None:
+                last = lu if last is None else max(last, lu)
+        peak = hours.index(max(hours)) if sum(hours) > 0.0 else None
+        return {"hour": peak, "last_seen": last}
 
     def snapshot(self) -> dict:
         """The current pattern of life, for the bus to persist during compaction."""

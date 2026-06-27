@@ -12,35 +12,78 @@ human reversal.
 """
 from __future__ import annotations
 
+import os
 from datetime import datetime
 
 from core.tile import Context, Event, Tile
 
-DARK_AFTER = 18  # local hour: auto-light only between dusk...
-DARK_BEFORE = 7  # ...and dawn
+DARK_AFTER = 18  # fallback local hour: auto-light only between dusk...
+DARK_BEFORE = 7  # ...and dawn (used only when no HOMIE_LAT/HOMIE_LON is configured)
 OFF_WINDOW = 600.0  # seconds a room must stay empty before the light auto-offs
 NEVER_AUTO_ON = {"bedroom"}  # request-only rooms (sleeping != wanting the light on)
+
+# Zone -> actuator alias. Presence zones are short ("living"), but the home's actuator (and
+# the act-map) is "light.living_room" (C14). Decoupling here keeps zone names untouched
+# while the manifest/act-map agree on one actuator name. Unlisted zones map 1:1.
+ROOM_ACTUATOR = {"living": "light.living_room"}
+
+
+def _actuator(room: str) -> str:
+    return ROOM_ACTUATOR.get(room, f"light.{room}")
 
 
 def _hour(ts: float) -> int:
     return datetime.fromtimestamp(ts).hour
 
 
+def _location() -> tuple[float, float] | None:
+    """The home's (lat, lon) from HOMIE_LAT/HOMIE_LON, or None if unset/unparseable."""
+    lat, lon = os.environ.get("HOMIE_LAT"), os.environ.get("HOMIE_LON")
+    if lat is None or lon is None:
+        return None
+    try:
+        return float(lat), float(lon)
+    except ValueError:
+        return None
+
+
 def _is_dark(ts: float) -> bool:
-    h = _hour(ts)
-    return h >= DARK_AFTER or h < DARK_BEFORE
+    """Is it dark enough to want lights at `ts`? Uses real solar civil dusk when the
+    home's location is configured (HOMIE_LAT/HOMIE_LON) — correct at any latitude —
+    and falls back to the fixed 18:00–07:00 window otherwise (second-review N4)."""
+    loc = _location()
+    if loc is None:
+        h = _hour(ts)
+        return h >= DARK_AFTER or h < DARK_BEFORE
+    from core.sun import is_dark as solar_is_dark
+    return solar_is_dark(ts, loc[0], loc[1])
+
+
+def _off_key(room: str) -> str:
+    return f"lighting.off.{room}"
 
 
 class Lighting(Tile):
     async def on_event(self, event: Event, ctx: Context) -> None:
         if event.topic == "presence.arrived":
             await self._maybe_on(event, ctx)
+        elif event.topic == "timer.fired":
+            await self._on_off_timer(event, ctx)
         else:  # presence.departed / occupancy.changed
             await self._maybe_off(event, ctx)
 
+    def _armed(self) -> set:
+        # ephemeral per-instance set of rooms with a pending auto-off timer. NOT
+        # persisted: a restart cancels the Clock's pending timers, and the next
+        # vacancy event simply re-arms — so a stale "armed" flag can never strand a
+        # light on.
+        if not hasattr(self, "_arming"):
+            self._arming: set = set()
+        return self._arming
+
     async def _maybe_on(self, event: Event, ctx: Context) -> None:
         room = event.payload.get("zone")
-        if not room or f"light.{room}" not in ctx.manifest.actuators:
+        if not room or _actuator(room) not in ctx.manifest.actuators:
             return  # a security-only zone (e.g. approach) or an unlit room
         if room in NEVER_AUTO_ON:
             return  # request-only; light_room() is the only path on
@@ -49,30 +92,38 @@ class Lighting(Tile):
         suppressed = self.state.get("suppressed", {}).get(room, [])
         if _hour(event.ts) in suppressed:
             return  # friction taught it not to auto-light this room at this hour
-        await ctx.act(f"light.{room}", {"state": "on"})
+        await ctx.act(_actuator(room), {"state": "on"})
 
     async def _maybe_off(self, event: Event, ctx: Context) -> None:
         room = event.payload.get("zone")
-        if not room or f"light.{room}" not in ctx.manifest.actuators:
+        if not room or _actuator(room) not in ctx.manifest.actuators:
             return
-        vacated = dict(self.state.get("vacated", {}))
+        armed = self._armed()
         if event.payload.get("occupied", False):
-            if vacated.pop(room, None) is not None:  # re-occupied: cancel pending auto-off
-                await self.state.put("vacated", vacated)
+            if room in armed:  # re-occupied: cancel the pending auto-off
+                armed.discard(room)
+                await ctx.emit(Event("timer.cancel", event.ts, {"key": _off_key(room)}))
             return
-        since = vacated.get(room)
-        if since is None:  # first sign of vacancy — arm the timer
-            vacated[room] = event.ts
-            await self.state.put("vacated", vacated)
-        elif event.ts - since >= OFF_WINDOW:  # stayed empty long enough — turn it off
-            vacated.pop(room, None)
-            await self.state.put("vacated", vacated)
-            await ctx.act(f"light.{room}", {"state": "off"})
+        # Vacancy: arm a real timer so the light turns off even if the room then goes
+        # completely silent (no further events) — the N1 fix. Arm once per vacancy.
+        if room not in armed:
+            armed.add(room)
+            await ctx.emit(Event("timer.set", event.ts,
+                                 {"after": OFF_WINDOW, "key": _off_key(room), "data": {"room": room}}))
+
+    async def _on_off_timer(self, event: Event, ctx: Context) -> None:
+        data = event.payload.get("data") or {}
+        room = data.get("room")
+        if not room or event.payload.get("key") != _off_key(room):
+            return  # not our auto-off timer
+        self._armed().discard(room)
+        if _actuator(room) in ctx.manifest.actuators:  # still ours to control
+            await ctx.act(_actuator(room), {"state": "off"})
 
     async def light_room(self, ctx: Context, room: str, on: bool) -> None:
         """Explicit request — bypasses the after-dark and request-only gates (this is
         the only way to light the bedroom). Still routed through ctx.act, so it is
         permission-checked and ledgered for friction attribution."""
-        actuator = f"light.{room}"
+        actuator = _actuator(room)
         if actuator in ctx.manifest.actuators:
             await ctx.act(actuator, {"state": "on" if on else "off"})

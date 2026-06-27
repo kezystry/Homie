@@ -31,6 +31,7 @@ import logging
 import os
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Callable
 
 from core.reason import Proposal, ToolCall
@@ -41,9 +42,27 @@ log = logging.getLogger("homie.deploy.llm")
 # stays in deploy/ and out of the code. Defaults match the decided setup: an 8B
 # abliterated model at Q5_K_M served by llama-server on loopback (docs/PLAN.md "Reason").
 DEFAULT_URL = "http://127.0.0.1:8080/v1/chat/completions"
+# DEFAULT_MODEL is the served model's name. The decided default is an abliterated-then-healed
+# Qwen3-8B (owner's call); keep the STOCK Qwen3-8B served alongside and flip HOMIE_LLM_MODEL to
+# A/B them by ear (the structural safety net — validation + capability gate — holds for both).
 DEFAULT_MODEL = os.environ.get("HOMIE_LLM_MODEL", "homie")  # llama-server ignores; Ollama needs it
 DEFAULT_TEMPERATURE = float(os.environ.get("HOMIE_LLM_TEMPERATURE", "0.4"))
 DEFAULT_TIMEOUT = float(os.environ.get("HOMIE_LLM_TIMEOUT", "30"))  # seconds; the GPU is on-box
+
+
+def _grammar_from_env() -> str | None:
+    """Optional GBNF grammar for constrained decoding. HOMIE_LLM_GRAMMAR may be a path to a
+    .gbnf file or the grammar text itself; unset => rely on the tool-schema grammar alone."""
+    val = os.environ.get("HOMIE_LLM_GRAMMAR")
+    if not val:
+        return None
+    try:
+        p = Path(val)
+        if p.is_file():
+            return p.read_text("utf-8")
+    except OSError:
+        pass
+    return val
 
 
 # --------------------------------------------------------------------------- #
@@ -64,10 +83,18 @@ def render_context(context: dict) -> str:
 
 
 def build_payload(*, system: str, context: dict, tools: list[dict], model: str,
-                  temperature: float) -> dict:
-    """Assemble the OpenAI-compatible chat-completions request body. `tool_choice`
-    stays "auto" — the model may legitimately choose to say nothing or just speak,
-    which the two-tier gate expects (do-nothing is the common case even on wake)."""
+                  temperature: float, grammar: str | None = None) -> dict:
+    """Assemble the OpenAI-compatible chat-completions request body.
+
+    `tool_choice` stays "auto" — the model may legitimately choose to say nothing or just
+    speak, which the two-tier gate expects (do-nothing is the common case even on wake).
+    `parallel_tool_calls` is forced off so the model emits AT MOST ONE tool call, matching
+    the "call exactly one tool" contract (and the parser, which only reads `tool_calls[0]`).
+
+    Grammar-constrained decoding (M6): with `tools` set, llama-server already constrains a
+    tool call's *arguments* to the function's JSON-Schema, so a malformed call can't be
+    sampled in the first place (fewer distrust-and-drop rejections in `Reason`). An optional
+    GBNF `grammar` (e.g. to also bound free-form replies) is passed through when supplied."""
     payload: dict = {
         "model": model,
         "messages": [
@@ -80,6 +107,9 @@ def build_payload(*, system: str, context: dict, tools: list[dict], model: str,
     if tools:
         payload["tools"] = tools
         payload["tool_choice"] = "auto"
+        payload["parallel_tool_calls"] = False  # one tool, decoded under its schema grammar
+    if grammar:
+        payload["grammar"] = grammar  # llama-server GBNF passthrough (optional)
     return payload
 
 
@@ -165,18 +195,20 @@ class LLMClient:
         model: str = DEFAULT_MODEL,
         temperature: float = DEFAULT_TEMPERATURE,
         timeout: float = DEFAULT_TIMEOUT,
+        grammar: str | None = None,
         transport: Transport = urllib_post,
     ) -> None:
         self.url = url or os.environ.get("HOMIE_LLM_URL", DEFAULT_URL)
         self.model = model
         self.temperature = temperature
         self.timeout = timeout
+        self.grammar = grammar if grammar is not None else _grammar_from_env()
         self._transport = transport
 
     async def propose(self, *, system: str, context: dict, tools: list[dict]) -> Proposal:
         payload = build_payload(
             system=system, context=context, tools=tools,
-            model=self.model, temperature=self.temperature,
+            model=self.model, temperature=self.temperature, grammar=self.grammar,
         )
         try:
             # Off-load the blocking urllib call so the bus loop is never stalled by the GPU.

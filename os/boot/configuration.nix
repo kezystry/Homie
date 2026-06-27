@@ -79,7 +79,9 @@
   # The Homie daemon: bus + Remember + Supervisor via the Python entrypoint.
   # Repo lives at /opt/homie; entrypoint is /opt/homie/scripts/run.py.
   # ---------------------------------------------------------------------------
-  environment.systemPackages = [ pkgs.python311 ];
+  # python311 runs the daemon; git is the update channel (the box is a git checkout of the
+  # repo, updated via scripts/update.py — pull + health-check + restart). See os/INSTALL.md.
+  environment.systemPackages = [ pkgs.python311 pkgs.git ];
 
   systemd.services.homie = {
     description = "Homie reasoning node (bus + Remember + Supervisor)";
@@ -89,7 +91,23 @@
     serviceConfig = {
       ExecStart = "${pkgs.python311}/bin/python3 /opt/homie/scripts/run.py";
       WorkingDirectory = "/opt/homie";
-      Environment = "HOMIE_STATE=/var/lib/homie";
+      Environment = [
+        "HOMIE_STATE=/var/lib/homie"
+        # Pin the home's timezone so Remember's hour-of-day buckets and the tiles all
+        # agree on "what hour is it" (second-review N7). Change this on a move.
+        "HOMIE_TZ=Europe/Berlin"
+        # Set the home's coordinates to enable latitude-correct solar dusk for lighting
+        # (second-review N4); leave unset for the fixed 18:00–07:00 fallback. Fill in on
+        # move-in (e.g. Kiel: 54.32, 10.14).
+        # "HOMIE_LAT=54.32"
+        # "HOMIE_LON=10.14"
+        # Point Homie at Home Assistant to drive REAL lights (DIRIGERA/Tradfri) and hear
+        # human switch-flips. Both must be set or Homie stays on the no-actuation stub.
+        # The token: HA → your profile → Security → Long-lived access tokens. Prefer
+        # delivering it out-of-band (see the LoadCredential note below) over hard-coding.
+        # "HOMIE_HOME_URL=ws://mini-pc.local:8123/api/websocket"
+        # "HOMIE_HOME_TOKEN=<long-lived-access-token>"
+      ];
       User = "homie";
       Group = "users";
 

@@ -20,13 +20,16 @@
 - **Concept & roadmap:** `docs/OVERVIEW.md`, `docs/DESIGN.md`, `docs/ROADMAP.md`; the
   hardware build plan + the decided always-on topology + the question bank live in
   `docs/PLAN.md`; bring-up order in `docs/BRINGUP.md`; audit backlog in `docs/BACKLOG.md`.
+- **Active execution:** `docs/MASTERPLAN.md` is the crafted plan (what & why, milestones
+  M0–M11); `docs/PROGRESS.md` is the living status board (how it's going — keep it updated
+  in the same commit as each milestone).
 - **Engineering:** `docs/INTERNALS.md` (decisions), `docs/PROTOCOL.md` (tile wire
   protocol), `docs/SECURITY.md` (privacy/identity), `docs/ARCHITECTURE.md`, `os/`
   (dual-boot NixOS + `INSTALL.md`).
 - **Code:** `core/` (`bus`, `remember`, `tile` runtime + channels, `mesh`, `act`,
   `reason` (cortex: novelty-gated LLM decide loop), `reconcile`, `consent`,
   `canonical`, `ritual` (nightly consolidation)), `tiles/` (`personal`, `security`,
-  `lighting`), `tests/` (169 passing), `scripts/run.py` (daemon), `scripts/spine_demo.py`.
+  `lighting`), `tests/` (295 passing), `scripts/run.py` (daemon), `scripts/spine_demo.py`.
 - **Importable notes:** `obsidian/` is a cross-linked Obsidian vault mirroring the docs.
 
 ## Decided architecture (see docs/PLAN.md)

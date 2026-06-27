@@ -81,8 +81,12 @@ sudo cp /path/to/homie/os/boot/configuration.nix /mnt/etc/nixos/configuration.ni
 sudo cp /path/to/homie/os/boot/flake.nix          /mnt/etc/nixos/flake.nix
 # hardware-configuration.nix stays as generated, beside these.
 
-# The daemon runs from /opt/homie:
-sudo mkdir -p /mnt/opt && sudo cp -a /path/to/homie /mnt/opt/homie
+# The daemon runs from /opt/homie. Clone it as a GIT CHECKOUT (not a copy) so the box
+# has an update channel from day one (see "Updating Homie" below):
+sudo mkdir -p /mnt/opt
+sudo git clone https://github.com/kezystry/Homie.git /mnt/opt/homie
+# (offline install? fall back to `cp -a /path/to/homie /mnt/opt/homie`, then convert it to a
+#  checkout later with the bootstrap in "Updating Homie".)
 ```
 
 Edit `/mnt/etc/nixos/configuration.nix` and fill in every `<PLACEHOLDER>`:
@@ -109,6 +113,64 @@ If the existing OS is missing from the menu: confirm it's a UEFI install, ensure
 Windows isn't hibernated, then `sudo nixos-rebuild boot` to re-run os-prober.
 os-prober mounts the other OS **read-only and transiently** — Homie never writes
 to it.
+
+## Updating Homie
+
+The box runs a **git checkout** at `/opt/homie`, so updates are pull + health-check +
+restart. The helper does the health check for you and refuses to call an update "safe"
+unless the full test suite passes:
+
+```sh
+cd /opt/homie
+python3 scripts/update.py            # pull + run the suite; reports safe / not-safe
+sudo systemctl restart homie         # apply it (or: python3 scripts/update.py --restart)
+```
+
+Roll back a bad update:
+
+```sh
+sudo git -C /opt/homie reset --hard HEAD@{1}   # previous commit
+sudo systemctl restart homie                   # (or pick an older NixOS generation at GRUB)
+```
+
+**One-time bootstrap** if an existing box has a *copied* `/opt/homie` (older installs used
+`cp -a`, which is not a git repo and cannot pull):
+
+```sh
+sudo systemctl stop homie
+sudo mv /opt/homie /opt/homie.bak                              # keep the old copy as a backup
+sudo git clone https://github.com/kezystry/Homie.git /opt/homie
+sudo chown -R homie:users /opt/homie                           # future pulls need no sudo
+sudo systemctl start homie
+```
+
+The repo is public, so the clone needs no credentials. `scripts/update.py` runs entirely on
+the box (stdlib only) and never grants Homie new authority — it only decides whether new
+*code* is safe to run; this is the channel the nightly self-upgrade (roadmap M11) builds on.
+
+## Connecting Home Assistant (real lights)
+
+Out of the box Homie runs the whole graph but with a **no-actuation stub** — it decides and
+logs, nothing physical moves. To drive real DIRIGERA/Tradfri lights through Home Assistant
+(and hear when a human flips a switch, which is how Homie learns), give it two values:
+
+1. In Home Assistant: **your profile → Security → Long-lived access tokens → Create token.**
+2. Point Homie at HA's WebSocket endpoint and hand it the token. Set both in
+   `os/boot/configuration.nix` (the commented `HOMIE_HOME_URL` / `HOMIE_HOME_TOKEN` lines) or,
+   for a quick test, in the environment before launching `scripts/run.py`:
+
+```sh
+export HOMIE_HOME_URL=ws://mini-pc.local:8123/api/websocket   # HA's WebSocket API
+export HOMIE_HOME_TOKEN=<long-lived-access-token>
+python3 /opt/homie/scripts/run.py
+```
+
+With both set, `journalctl -u homie` shows `home: Home Assistant adapter -> …` and Homie's
+acts become real `light.turn_on/off` service calls. Set **only the URL** and it stays on the
+stub (with a warning) — both are required. The token is a secret: prefer systemd
+`LoadCredential` / an out-of-band drop over committing it. Which Homie actuator name maps to
+which HA `entity_id` — and which entities are *never* touched — lives in
+[`deploy/act_map.toml`](../deploy/act_map.toml).
 
 ## Recovery / self-healing
 

@@ -423,7 +423,9 @@ class InProcessChannel:
 
     async def deliver_friction(self, signal: FrictionSignal) -> None:
         if self._learn:
-            await self._learn(self._state, signal)
+            note = await self._learn(self._state, signal)
+            if note:  # the tile changed its mind — let it say so, once (M4)
+                await self.ctx.speak(note)
 
     async def call(self, fn: str, **args) -> object:
         return await getattr(self._tile, fn)(self.ctx, **args)
@@ -531,7 +533,11 @@ class SubprocessChannel:
 
     async def _forward(self, kind: str, m: dict) -> None:
         if kind == "emit":
-            await self.ctx.emit(Event(**m["event"]))
+            ev = Event(**m["event"])
+            if ev.topic == "actuator.requested":  # a child cannot smuggle a forged command (C2)
+                log.warning("tile %s: subprocess emit of actuator.requested dropped", self.manifest.name)
+                return
+            await self.ctx.emit(ev)
         elif kind == "act":
             await self.ctx.act(m["actuator"], m["value"])
         elif kind == "speak":
@@ -583,7 +589,7 @@ class Supervisor:
     routes events and friction. Routing is built from manifests; only the channel
     loader ever touches tile code."""
 
-    def __init__(self, tiles_dir: Path, bus, policy: SupervisionPolicy | None = None, *, remember=None, consent=None, state_root: Path | None = None) -> None:
+    def __init__(self, tiles_dir: Path, bus, policy: SupervisionPolicy | None = None, *, remember=None, consent=None, state_root: Path | None = None, registry=None) -> None:
         self.tiles_dir = Path(tiles_dir)
         # Where tiles keep their writable state. Under the hardened service
         # /opt/homie is read-only (ProtectSystem=strict); state must live in
@@ -594,6 +600,7 @@ class Supervisor:
         self.policy = policy or SupervisionPolicy()
         self.remember = remember  # Behavioral Analysis, exposed to tiles via ctx.recall
         self.consent = consent  # confirmation gate, exposed to tiles via ctx.confirm
+        self._caps = registry  # capability minter (C2); None = legacy path (no cap stamped)
         self._tiles: dict[str, TileRecord] = {}
         self._ledger: list[ActionRef] = []  # recent acts, for friction attribution
         self._manual: dict[str, list[float]] = {}  # windowed manual-action times, for repeat detection
@@ -652,6 +659,8 @@ class Supervisor:
             return
         self.bus.drop_owner(f"tile:{name}")
         rec.subs.clear()
+        if self._caps is not None:
+            self._caps.revoke_tile(name)  # a stopped tile's capabilities die with it
         if rec.channel:
             await rec.channel.stop(grace=grace)
 
@@ -783,6 +792,8 @@ class Supervisor:
             rec.state = "QUARANTINED"
             self.bus.drop_owner(f"tile:{name}")
             rec.subs.clear()
+            if self._caps is not None:
+                self._caps.revoke_tile(name)  # a quarantined tile loses its capabilities
             log.warning("tile %s quarantined after %d faults", name, len(rec.fault_times))
             return
         try:  # restart in place — reload the cell
@@ -798,6 +809,12 @@ class Supervisor:
         name = manifest.name
 
         async def emit(event: Event) -> None:
+            # ctx.emit is NOT the act path. Refuse a raw actuator.requested here so a tile
+            # cannot bypass the capability gate by emitting a forged command (C2/N3) — the
+            # forged event never even reaches the bus.
+            if event.topic == "actuator.requested":
+                log.warning("tile %s: raw emit of actuator.requested refused (use ctx.act)", name)
+                return
             await self.bus.publish(event)
 
         async def act(actuator: str, value, priority: str = "automation") -> None:
@@ -805,11 +822,14 @@ class Supervisor:
             self._ledger.append(ref)
             cutoff = ref.at - self.policy.reversal_window
             self._ledger = [r for r in self._ledger if r.at >= cutoff]  # bounded by window
-            await self.bus.publish(
-                Event("actuator.requested", ref.at,
-                      {"actuator": actuator, "value": value, "tile": name, "priority": priority},
-                      source=f"tile:{name}")
-            )
+            # The priority is taken from the manifest, never the caller — a tile cannot ask
+            # for a level it wasn't granted even through ctx.act (defence in depth with
+            # TileContext.act). The minted handle is the only thing Act will trust.
+            level = manifest.priority_for(actuator)
+            payload = {"actuator": actuator, "value": value, "tile": name, "priority": level}
+            if self._caps is not None:
+                payload["cap"] = self._caps.mint(name, actuator, level)
+            await self.bus.publish(Event("actuator.requested", ref.at, payload, source=f"tile:{name}"))
 
         async def speak(text: str) -> None:
             await self.bus.publish(Event("interface.say", time.time(), {"text": text}, source=f"tile:{name}"))

@@ -8,7 +8,8 @@ name = "lighting"
 summary = "Presence-driven, after-dark room lighting that learns from reversals."
 
 [subscribes]
-events = ["presence.arrived", "presence.departed", "occupancy.changed"]
+# timer.fired drives the vacancy auto-off (armed via timer.set on the Clock seam).
+events = ["presence.arrived", "presence.departed", "occupancy.changed", "timer.fired"]
 
 [provides]
 intents = ["lights on", "lights off"]
@@ -28,7 +29,7 @@ description = "True to turn on, False to turn off."
 required = true
 
 [acts]
-actuators = ["light.living", "light.kitchen", "light.hallway", "light.bedroom"]
+actuators = ["light.living_room", "light.kitchen", "light.hallway", "light.bedroom"]
 priority = "ambient"               # auto-on rides below SECURITY/AUTOMATION
 
 [acts.priorities]

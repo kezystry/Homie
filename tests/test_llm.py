@@ -82,12 +82,21 @@ class BuildPayloadTests(unittest.TestCase):
         self.assertEqual(p["messages"][1]["role"], "user")
         self.assertIn("presence.arrived", p["messages"][1]["content"])  # context rendered in
         self.assertEqual(p["tool_choice"], "auto")
+        self.assertFalse(p["parallel_tool_calls"])  # one tool only (M6)
         self.assertFalse(p["stream"])
 
     def test_no_tools_omits_tool_keys(self) -> None:
         p = build_payload(system="S", context={}, tools=[], model="m", temperature=0.0)
         self.assertNotIn("tools", p)
         self.assertNotIn("tool_choice", p)
+        self.assertNotIn("parallel_tool_calls", p)
+
+    def test_grammar_passthrough(self) -> None:
+        p = build_payload(system="S", context={}, tools=[], model="m", temperature=0.0,
+                          grammar="root ::= \"yes\" | \"no\"")
+        self.assertEqual(p["grammar"], "root ::= \"yes\" | \"no\"")
+        self.assertNotIn("grammar",
+                         build_payload(system="S", context={}, tools=[], model="m", temperature=0.0))
 
     def test_render_context_is_deterministic(self) -> None:
         ctx = {"b": 2, "a": 1}
