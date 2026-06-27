@@ -9,8 +9,17 @@
 # the phone without typing a long public key at the console. Once your key is
 # installed (authorizedKeys below), flip PasswordAuthentication to mkForce false
 # and rebuild for key-only access.
-{ lib, ... }:
+{ lib, pkgs, ... }:
 {
+  # Manageability essentials, installed with the bootstrap so the box stops
+  # fighting you at the console:
+  #   - flakes/nix-command enabled PERMANENTLY, so `nixos-rebuild --flake` and
+  #     plain `nix` commands work without `--extra-experimental-features` every
+  #     time (the base install ships with them off).
+  #   - git on PATH, so updates are just `git -C /opt/homie pull` — no nix-shell.
+  nix.settings.experimental-features = [ "nix-command" "flakes" ];
+  environment.systemPackages = [ pkgs.git ];
+
   services.openssh.enable = lib.mkForce true;
   services.openssh.settings.PasswordAuthentication = lib.mkForce true; # bootstrap; tighten to false after key install
   services.openssh.settings.PermitRootLogin = lib.mkForce "no";

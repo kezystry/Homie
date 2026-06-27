@@ -70,7 +70,10 @@ else:
     raise SystemExit("   flake.nix: could not find an anchor to insert ./ssh.nix — add it by hand")
 PY
 
-nixos-rebuild switch --flake "$NIXOS#homie"
+# The base install ships with flakes off; pass the feature for this first
+# rebuild. ssh.nix turns it on permanently, so later rebuilds need no flag.
+nixos-rebuild switch --flake "$NIXOS#homie" \
+  --extra-experimental-features 'nix-command flakes'
 echo "   rebuild complete — sshd should be listening on :22"
 
 # ── 4. Show the address to connect to ─────────────────────────────────────────
