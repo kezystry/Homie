@@ -80,7 +80,25 @@ in
   # Group is "seat" (NOT "seatd" — the NixOS module owns the socket as root:seat).
   # ---------------------------------------------------------------------------
   services.seatd.enable = true;
-  users.users.homie.extraGroups = [ "video" "render" "seat" "input" ];
+  users.users.homie.extraGroups = [ "video" "render" "seat" "input" "audio" ];
+
+  # ---------------------------------------------------------------------------
+  # Audio — PipeWire (modern server) with ALSA + PulseAudio compat, so Stremio,
+  # mpv, and Steam/Proton all get sound out over HDMI to the TV. rtkit gives it
+  # realtime priority for glitch-free playback. There are usually several sinks
+  # (NVIDIA HDMI outputs + any motherboard audio); if the default lands on the
+  # wrong one and you hear nothing, pick the HDMI sink over SSH:
+  #     wpctl status                    # list sinks, note the HDMI one's ID
+  #     wpctl set-default <ID>          # make it the default
+  # (wpctl ships with wireplumber, which PipeWire enables by default.)
+  # ---------------------------------------------------------------------------
+  services.pipewire = {
+    enable = true;
+    alsa.enable = true;
+    alsa.support32Bit = true;
+    pulse.enable = true;
+  };
+  security.rtkit.enable = true;
 
   environment.systemPackages = with pkgs; [
     mpv        # camera view (mpv --vo=drm) and a fallback media player
