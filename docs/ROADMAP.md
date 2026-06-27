@@ -1,5 +1,10 @@
 # Roadmap
 
+> **Active execution plan: [`MASTERPLAN.md`](MASTERPLAN.md).** That document supersedes
+> this table for current work — it sequences the post-audit milestones (M0–M10) that turn
+> the tested spine into a single, shipped, breathing organism. The phases below remain the
+> long-range hardware/colony arc.
+
 Incremental build order; each phase ships something usable.
 
 | Phase | Focus | Goal |
