@@ -39,6 +39,7 @@ from core.act import Act, ActMap, CommandLog
 from core.anchor_voice import AnchorVoice
 from core.bus import Bus
 from core.canonical import ha_canonical
+from core.clock import Clock
 from core.cockpit_bridge import CockpitBridge
 from core.consent import Consent
 from core.mesh import Link, MeshBridge
@@ -71,6 +72,7 @@ class DaemonConfig:
     tiles_dir: Path | None = None      # defaults to <repo>/tiles
     act_map: ActMap | None = None      # None = no actuators mapped (empty allowlist)
     compact_threshold: int = 5000      # durability-log auto-compact floor
+    tick_seconds: float = 60.0         # Clock cadence: tick.minute (+ tick.hour on the hour)
     compact_interval: float = 3600.0   # how often the housekeep loop ticks
     ritual_interval: float = 86400.0   # nightly consolidation cadence
     llm: LLMClient | None = None       # a real client => the reasoning cortex is present
@@ -91,7 +93,7 @@ class Daemon:
     service is stopped. Tests inspect `.bus`, `.remember`, `.sup`, etc. directly."""
 
     def __init__(self, *, bus, remember, consent, sup, act, reconciler, reason,
-                 anchor, cockpit, mesh, home, perception, config: DaemonConfig) -> None:
+                 anchor, cockpit, mesh, clock, home, perception, config: DaemonConfig) -> None:
         self.bus = bus
         self.remember = remember
         self.consent = consent
@@ -99,6 +101,7 @@ class Daemon:
         self.act = act
         self.reconciler = reconciler
         self.reason = reason
+        self.clock = clock
         self.anchor = anchor          # None when a real cortex owns chat
         self.cockpit = cockpit        # None when no socket configured
         self.mesh = mesh              # None = loopback (single node)
@@ -118,6 +121,7 @@ class Daemon:
         await self.act.start()
         self.reconciler.attach(self.home)     # human state-changes -> friction
         await self.sup.start_all()            # tiles subscribe (evaluators)
+        await self.clock.start()              # the heartbeat: tick.* + the timer seam
         await self.reason.start()             # the proposer (real or null)
         if self.anchor is not None:
             await self.anchor.start()         # anchor chat floor (no-cortex only)
@@ -180,6 +184,7 @@ class Daemon:
         if self._tasks:
             await asyncio.gather(*self._tasks, return_exceptions=True)
         self._tasks = []
+        await self.clock.stop()
         await self.reason.stop()
         if self.anchor is not None:
             await self.anchor.stop()
@@ -229,7 +234,8 @@ def build_daemon(home, perception: Perception | None, *, config: DaemonConfig | 
 
     cockpit = CockpitBridge(bus, path=config.cockpit_sock) if config.cockpit_sock else None
     mesh = MeshBridge(config.node_id, bus, config.mesh_link) if config.mesh_link is not None else None
+    clock = Clock(bus, now=config.now, tick_seconds=config.tick_seconds)
 
     return Daemon(bus=bus, remember=remember, consent=consent, sup=sup, act=act,
                   reconciler=reconciler, reason=reason, anchor=anchor, cockpit=cockpit,
-                  mesh=mesh, home=home, perception=perception, config=config)
+                  mesh=mesh, clock=clock, home=home, perception=perception, config=config)
