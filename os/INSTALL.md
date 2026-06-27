@@ -148,6 +148,30 @@ The repo is public, so the clone needs no credentials. `scripts/update.py` runs 
 the box (stdlib only) and never grants Homie new authority — it only decides whether new
 *code* is safe to run; this is the channel the nightly self-upgrade (roadmap M11) builds on.
 
+## Connecting Home Assistant (real lights)
+
+Out of the box Homie runs the whole graph but with a **no-actuation stub** — it decides and
+logs, nothing physical moves. To drive real DIRIGERA/Tradfri lights through Home Assistant
+(and hear when a human flips a switch, which is how Homie learns), give it two values:
+
+1. In Home Assistant: **your profile → Security → Long-lived access tokens → Create token.**
+2. Point Homie at HA's WebSocket endpoint and hand it the token. Set both in
+   `os/boot/configuration.nix` (the commented `HOMIE_HOME_URL` / `HOMIE_HOME_TOKEN` lines) or,
+   for a quick test, in the environment before launching `scripts/run.py`:
+
+```sh
+export HOMIE_HOME_URL=ws://mini-pc.local:8123/api/websocket   # HA's WebSocket API
+export HOMIE_HOME_TOKEN=<long-lived-access-token>
+python3 /opt/homie/scripts/run.py
+```
+
+With both set, `journalctl -u homie` shows `home: Home Assistant adapter -> …` and Homie's
+acts become real `light.turn_on/off` service calls. Set **only the URL** and it stays on the
+stub (with a warning) — both are required. The token is a secret: prefer systemd
+`LoadCredential` / an out-of-band drop over committing it. Which Homie actuator name maps to
+which HA `entity_id` — and which entities are *never* touched — lives in
+[`deploy/act_map.toml`](../deploy/act_map.toml).
+
 ## Recovery / self-healing
 
 NixOS gives OS-level self-healing on top of the supervisor's tile restarts:

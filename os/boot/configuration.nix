@@ -101,6 +101,12 @@
         # move-in (e.g. Kiel: 54.32, 10.14).
         # "HOMIE_LAT=54.32"
         # "HOMIE_LON=10.14"
+        # Point Homie at Home Assistant to drive REAL lights (DIRIGERA/Tradfri) and hear
+        # human switch-flips. Both must be set or Homie stays on the no-actuation stub.
+        # The token: HA → your profile → Security → Long-lived access tokens. Prefer
+        # delivering it out-of-band (see the LoadCredential note below) over hard-coding.
+        # "HOMIE_HOME_URL=ws://mini-pc.local:8123/api/websocket"
+        # "HOMIE_HOME_TOKEN=<long-lived-access-token>"
       ];
       User = "homie";
       Group = "users";

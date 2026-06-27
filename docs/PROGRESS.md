@@ -5,8 +5,9 @@ the **what & why**; this file is the **how it's going**. Updated every time a mi
 lands or a decision is taken.*
 
 - **Branch:** `claude/homie-overview-bo4l8v`
-- **Tests:** 305 passing (`python3 -m unittest discover -s tests`) — green on every push
-- **Last updated:** 2026-06-27, after M5 + Step 0 (the box's update channel); M6 next
+- **Tests:** 325 passing (`python3 -m unittest discover -s tests`) — green on every push
+- **Last updated:** 2026-06-27, after the **Home Assistant adapter** (the real hand) +
+  the GIST v2 memory format; M6 next
 
 > **Updating the Homie box.** The box runs a git checkout at `/opt/homie`; update with
 > `python3 scripts/update.py` (pulls + runs the suite as a health check, reports safe/not),
@@ -53,6 +54,14 @@ Legend: ✅ shipped & pushed · 🔄 in progress · ⏳ planned · ⏸ blocked o
 
 - **Now (M6):** Give the real 8B-on-3060 cortex a serving discipline — grammar-constrained
   tool decoding, a latency SLO, warm/cold policy chosen from **M3's measured wake cadence**.
+- **Just shipped (the real hand — Home Assistant adapter):** the `HomeClient` seam that was a
+  `LoggingHome` stub is now a working **Home Assistant client** (`core/ha.py` over a stdlib
+  WebSocket in `core/ws.py`). Homie drives real DIRIGERA/Tradfri lights via `call_service` and
+  hears human switch-flips via `subscribe_events` — its own echoes suppressed through the one
+  `ha_canonical`, so only *human* changes become friction. Reconnects with backoff; tests +20
+  (offline, no live HA). Turn it on by setting `HOMIE_HOME_URL` + `HOMIE_HOME_TOKEN`.
+- **Just shipped (GIST v2):** the daily-memory format revised by a 21-agent council into an
+  integer-exact STATE block with human-readable renders — see `docs/MEMORY-GIST.md`.
 - **Just shipped (M5):** Closed **C2** — `Act` no longer trusts the payload's
   priority/actuator; every command now carries a registry **capability handle** the trusted
   core mints (bound to tile+actuator+manifest-priority), and a forged raw `ctx.emit` is
