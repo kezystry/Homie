@@ -81,8 +81,10 @@ class Beta:
 @dataclass(frozen=True)
 class TimeStat:
     """Exponentially-weighted time moments over local-midnight-minutes t ∈ [0,1439]:
-    W = Σw, S1 = Σw·t, S2 = Σw·t². μ = S1/W (minutes), σ² = S2/W − μ². Uniform decay of
-    (W,S1,S2) by the same factor leaves μ and σ² unchanged — the EW invariance property."""
+    W = Σw, S1 = Σw·t, S2 = Σw·t². μ = S1/W (minutes), σ² = S2/W − μ². In exact arithmetic,
+    uniform decay of (W,S1,S2) leaves μ and σ² unchanged (the EW invariance property); under
+    per-field banker's rounding it holds only WITHIN ROUNDING (< 1 minute) — the decay is still
+    fully deterministic, but the invariance is approximate (see test_uniform_decay_*)."""
 
     W: int = 0
     S1: int = 0

@@ -49,6 +49,33 @@ class DecayTests(unittest.TestCase):
         # 2**(-1/30) ≈ 0.9771599... ; 1000 * that = 977.159..., banker-rounds to 977
         self.assertEqual(decay_q(1000, 1), 977)
 
+    def test_golden_decay_vectors(self):
+        # Pin the operator's output so a future libmpdec last-ULP change can never silently
+        # alter persisted/signed state without a failing test (external review G-1). These are
+        # the canonical decay of 1_000_000 milli-units at a range of night counts.
+        golden = {0: 1_000_000, 1: 977_160, 7: 850_667, 15: 707_107, 30: 500_000, 60: 250_000, 90: 125_000}
+        for nights, expected in golden.items():
+            self.assertEqual(decay_q(1_000_000, nights), expected, f"decay at {nights} nights drifted")
+
+    def test_deterministic_across_decimal_backends(self):
+        # decay_q rests on Decimal being identical across CPython's C (_decimal) and pure-Python
+        # (_pydecimal) backends. Force the pure-Python one and assert it matches the live result,
+        # so the "bit-identical on every host" claim is gated, not just asserted in prose (G-1).
+        import importlib
+        try:
+            pydec = importlib.import_module("_pydecimal")
+        except ImportError:
+            self.skipTest("_pydecimal not available")
+        ctx = pydec.Context(prec=50, rounding=pydec.ROUND_HALF_EVEN)
+        two, hl = pydec.Decimal(2), pydec.Decimal(30)
+        for value_q in (1000, 1_000_000, 987_654, 5_000_000_000):
+            for nights in (1, 7, 15, 30, 61):
+                factor = ctx.power(two, ctx.divide(pydec.Decimal(-nights), hl))
+                scaled = ctx.multiply(pydec.Decimal(value_q), factor)
+                py = int(scaled.to_integral_value(rounding=pydec.ROUND_HALF_EVEN))
+                self.assertEqual(py, decay_q(value_q, nights),
+                                 f"backend mismatch at value={value_q} nights={nights}")
+
 
 class FirmnessTests(unittest.TestCase):
     def test_float_free_and_clamped(self):
