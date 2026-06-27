@@ -85,7 +85,15 @@ in
     # If a specific driver/kernel combo ever regresses on real hardware, this is
     # the one knob to flip to `false` for the known-good proprietary module.
     # VM-VALIDATE: which module loads cleanly is only provable on the 3060.
-    open = true;
+    #
+    # REGRESSED AT 565 ON THE 3060 (confirmed on the box): with the OPEN module,
+    # driver 565 created the nvidia-drm framebuffer but never drove the HDMI
+    # output -> "NO SIGNAL" on the console the moment nvidia-drm took over from
+    # simpledrm (system stayed up; reachable over SSH). The open module was fine
+    # at 550 but not at 565 here. The proprietary module drives the display
+    # correctly and KEEPS explicit sync (a driver-level feature, not module-
+    # specific), so gamescope still renders flicker-free. Hence: false.
+    open = false;
 
     # Kernel modesetting — needed for a working console framebuffer (the only
     # screen Homie uses: pulled camera frames / faces) and required by the open
