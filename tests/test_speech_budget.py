@@ -114,9 +114,9 @@ class GovernorTests(unittest.TestCase):
         spoken = [d for d in outs if d.spoken]
         deferred = [d for d in outs if d.deferred]
         self.assertEqual(len(spoken), 2)
-        self.assertEqual(len(deferred), 2)              # the overflow is kept, not lost
+        self.assertEqual(len(deferred), 2)              # overflow recorded (recap shows a lossy count)
         self.assertTrue(all(d.outcome == "budget" for d in deferred))
-        # nothing is silently dropped: every decision is either spoken or deferred
+        # every decision is accounted for as exactly one of spoken/deferred (no silent gap)
         self.assertEqual(len(spoken) + len(deferred), 4)
 
 

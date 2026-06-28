@@ -1,0 +1,101 @@
+# SCOPE — the Complexity Budget (near-term, binding)
+
+*The master-vision brainstorm invented a "Complexity Budget" (every ADD must name a CUT;
+the solo owner must be able to operate every subsystem over an SSH phone session) — and then,
+as the [external audit](audits/2026-06-27-brainstorm-external-audit.md) caught, never ran its
+own output through it: it adopted **24 inventions** and a **12-phase roadmap** to build a
+**six-thing product**. This file is that filter, applied. It is the near-term scope of record;
+where it disagrees with the brainstorm's roadmap, this file wins until the owner says otherwise.*
+
+## The rule
+
+1. **Every ADD names a CUT.** No new subsystem ships unless it serves *knows-me* or
+   *effortless* **this quarter** AND the solo owner can run it from an SSH phone session.
+2. **The next roadmap is authored from the lived-gap log, not the want-map.** Build the six,
+   live with them for a month, and let what the owner actually reaches for authorise the 7th.
+3. **A "lean" verdict cannot be re-opened into a "cathedral" verdict** without a named
+   requirement. (This is how "go lean" became an HMAC codec last time. Not again.)
+
+## KEEP — the true first-light set (the soul, ~80% already built)
+
+This is the *whole* near-term build. Everything else is deferred.
+
+1. **The 3 GIST stat fixes in `remember.py`** + the `nmin` evidence floor — *fixes a live bug*
+   (present_days makes confidence exceed 1.0 today), so this jumps the queue.
+2. **The crash-safe nightly fold** (fsync the distilled notes via temp+atomic-rename BEFORE
+   rotating the raw log) + a replay/determinism test.
+3. **The Recap Composer** — a deterministic, template-first morning note (Yesterday / Learned /
+   Watching / Tidied), caps enforced *in code* (one Learned, one Watching, honest-empty),
+   overflow collapsed lossily, written even with no LLM.
+4. **The "What Homie Knows" page + `memory.overlay`** — plain rows from the GIST brief, each
+   with a confidence word + provenance ("from 32 days" vs "from 3 days"), three one-tap
+   actions ([that's me] / [not quite] / [lock]).
+5. **One-key undo + the Friction Ledger pane** — every act a selectable plain-sentence row,
+   reversed in one keystroke via the capability inverse-act path.
+6. **Lights + climate autonomy** — silent action *after a clean record*, the owner's chosen
+   first solo. (See the simplified AutonomyGate below.)
+
+Plus the one real prerequisite the audit flagged:
+
+- **`confirm.response` producer** — a cockpit/phone Y/N source, so Consent stops being a 30s
+  fail-safe-no into the void. Without it, no guarded action can ever actually be approved.
+
+## KEEP THE LAW, not the apparatus
+
+- **The single-waist law + a Coherence CI test** (no tile speaks / egresses / acts except
+  through its waist). The *invariant* is worth everything; the eight inventions hung off it
+  (AliveState, ToneState, register state machine, the orb, …) are deferrable. Ship the CI test
+  and fill the waist with one Voice now; defer the rest.
+- **Shipped (Phase A):** the SpeechBudget waist (`core/voice.py` + `core/speech_budget.py`)
+  is the first instance of this law — one global governor on `interface.say`, CI-tested that
+  raw speech never reaches the cockpit.
+
+## KEEP-BUT-SIMPLER
+
+- **AutonomyGate / TrustLedger:** for **two** actuator classes (lights, climate) do NOT build
+  a per-(capability, zone, hour-class) rolling-score auto-promotion engine. Smallest correct
+  version: a **hand-set rung per capability** the owner flips from the trust page, plus
+  **auto-demote-on-reversal**. Add the rolling score when there is a third and fourth
+  capability to promote — not before. (Auto-promotion scoring for two capabilities is the
+  scope agent's exact failure mode.)
+
+## Binding resolutions (the four contradictions the audit found)
+
+- **§4.1 — overflow is lossy, not "never dropped."** Over-budget proactive lines defer to a
+  *lossy count* in the recap; most die unspoken. A count is honest; a "never dropped" promise
+  is not. *(Already corrected in `core/voice.py` / `core/speech_budget.py`.)*
+- **§4.2 — ask once, then silent.** The first time a routine is confident, Homie offers once
+  ("warm the lights at 7?"); on a yes it acts **silently forever after** (logged, never
+  re-announced). The one offer is not a standing announcement.
+- **§4.3 — R1 is a constraint, not a tier.** The resting autonomy states are exactly two:
+  **R0 (ask)** and **R2 (silent)**. "Announce-then-act" (R1) is a time-boxed, one-capability-
+  at-a-time shakedown — never a resting rung, or it becomes running commentary.
+- **§4.4 — the signing key is owner-held only; Homie-self-signing is EXCLUDED.** There is no
+  safe version of "Homie autonomously authors, signs, and deploys its own code." The most we
+  allow: *Homie proposes code → the **owner** signs (key off-box, phone or hardware token) →
+  the pipeline deploys signed changes with atomic rollback.* Authorship/blessing stays human.
+  This is the load-bearing rail that makes "bold self-improvement" real and not theatre.
+  **Owner confirmation wanted on key custody (phone vs hardware token, and a backup signer).**
+
+## DEFERRED / CUT (correct shelves — do not build until a tripwire names them)
+
+GIST codec/HMAC/DP/varint/two-rate/reservoir · three-node mesh transport (seam-as-flag;
+run single-brain-in-practice) · autonomous cyber-defense → alert-only · camera intent/
+deception reading → north-star only · delights / MusicDJ · QLoRA fine-tuning · remote-wipe /
+off-site backup (LUKS + panic-lock/duress-wipe + local & cross-machine backup is the
+worst-case baseline) · the rolling-score trust engine · AliveState/orb/ToneState apparatus.
+
+## Known blocker (carried)
+
+Per-person privacy and guest-mode's "stop learning from non-owner" are blocked on the
+unpassed reconciler `context` (`zone`/`actor` are `None` in `build_daemon` today — audit
+NEW-6). The autonomy *ladder* does NOT need it (its grain is actuator-zone + hour +
+capability); only the *person*-attributed rules do. Land that one wire before those.
+
+## Still open (subtractive pass, owner's call)
+
+The audit's "one thing" is to re-run the **three red-teams that failed validation**
+(privacy-leak, reliability, **over-complexity**) **against the chair's synthesis** — with an
+explicit mandate to *delete* inventions — before building further. Adopting this SCOPE file
+already performs most of that subtraction; the dedicated re-run remains available if the owner
+wants the adversarial check on reliability and privacy specifically.

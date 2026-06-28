@@ -7,8 +7,11 @@ ledger) whether to speak now, and republishes:
 
   * `interface.spoken` — the governed channel the cockpit/voice front-end actually renders.
     The owner hears this, never the raw `interface.say`.
-  * `speech.deferred`  — over-budget or muted lines, kept for the morning recap. Deferred,
-    never dropped: a nag silenced is fine, a useful line lost is not.
+  * `speech.deferred`  — over-budget or muted lines. The morning recap MAY collapse these
+    into a single lossy count ("+6 minor things"); most simply die unspoken, which is the
+    correct behaviour for a silent-by-default home (external audit §4.1: a thought worth
+    saying tomorrow wasn't worth saying — a count is honest, a "never dropped" promise is
+    not). The channel exists so the recap can show the count, NOT to guarantee resurfacing.
 
 This is the architectural muzzle: there is exactly ONE governor on the only channel that
 can nag the owner, wired unconditionally in `build_daemon`. Adding a tenth talking feature

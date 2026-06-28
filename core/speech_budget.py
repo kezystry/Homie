@@ -17,7 +17,8 @@ bit-identical counts. Three cooperating pieces:
 
   * `SpeechBudget` — *cap it.* A token bucket over proactive utterances (a small per-hour
     burst capacity plus a hard per-day ceiling). Safety/summons speech bypasses it
-    entirely. Over-budget lines are DEFERRED to the morning recap, never silently dropped.
+    entirely. Over-budget lines defer to the recap as a LOSSY count — most die unspoken
+    (external audit §4.1: silence is the right default; "never dropped" was a false promise).
   * `Mute`         — *the owner's own hand.* An everyday "quiet for an hour" / "minimal
     today" the owner sets in the moment, distinct from guest/privacy semantics and
     instantly reversible. The fastest nag-kill is a mute the owner controls.
@@ -55,9 +56,9 @@ def is_exempt(kind: str) -> bool:
 @dataclass(frozen=True)
 class SpeechDecision:
     """One evaluation of the speech gate — the unit the ledger counts and `core/voice.py`
-    turns into an `interface.spoken` (the owner hears it) or a `speech.deferred` (it waits
-    for the morning recap). `spoken` and `deferred` are mutually exclusive. `outcome` is
-    the human-readable reason."""
+    turns into an `interface.spoken` (the owner hears it) or a `speech.deferred` (it does
+    NOT reach the owner now; the recap may show it as part of a lossy count). `spoken` and
+    `deferred` are mutually exclusive. `outcome` is the human-readable reason."""
 
     kind: str
     source: str | None

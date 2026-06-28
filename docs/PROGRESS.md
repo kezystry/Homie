@@ -5,9 +5,11 @@ the **what & why**; this file is the **how it's going**. Updated every time a mi
 lands or a decision is taken.*
 
 - **Branch:** `claude/homie-overview-bo4l8v`
-- **Tests:** 366 passing (`python3 -m unittest discover -s tests`) — green on every push
-- **Last updated:** 2026-06-27, after **M6** (serving discipline), the **Home Assistant adapter**
-  (+ audit fixes NEW-1/2/10), and **GIST slice 2** (the integer STATE core, ratified). M7 in progress.
+- **Tests:** 390 passing (`python3 -m unittest discover -s tests`) — green on every push
+- **Last updated:** 2026-06-27, after **Phase A — the SpeechBudget muzzle** (one global cap on
+  owner-facing speech, the anti-nag waist), following the master-vision brainstorm + its external
+  audit. The audit's scope filter is now binding in [`docs/SCOPE.md`](SCOPE.md): build the **six-thing
+  soul**, defer the rest. Prior: **M6** (serving discipline), the **HA adapter**, **GIST slice 2**.
 
 > **Updating the Homie box.** The box runs a git checkout at `/opt/homie`; update with
 > `python3 scripts/update.py` (pulls + runs the suite as a health check, reports safe/not),
@@ -39,6 +41,7 @@ M3   ✅ shipped   Wake telemetry → calibrated surprise → enforced budget
 M4   ✅ shipped   The hour-shaped lesson, spoken back
 M5   ✅ shipped   Capability-gated act path — no faked commands (closes C2/C14)
 M6   ✅ shipped   8B-on-3060 serving discipline — latency SLO, warm/cold, tool grammar
+PA   ✅ shipped   Phase A — SpeechBudget muzzle: one global cap on owner-facing speech (anti-nag)
 M7   ⏳ planned    Positive-schema privacy guard + Dream Journal (retrieval)
 M8   ⏳ planned    Friction Ledger pane + one-key undo
 M9   ⏳ planned    Deploy posture + confinement
@@ -52,9 +55,18 @@ Legend: ✅ shipped & pushed · 🔄 in progress · ⏳ planned · ⏸ blocked o
 
 ## Now / Next / Later
 
-- **Now (M7):** The privacy guard + Dream Journal — Homie remembers routines via retrieval
-  (the GIST format) while a positive-schema guard keeps private things (faces, raw camera) from
-  ever crossing between machines.
+- **Now (the six-thing soul, per [`docs/SCOPE.md`](SCOPE.md)):** the brainstorm + external audit
+  reordered the work. Build order: **(A) ✅ the muzzle** → **(B) honest beliefs** (the 3 GIST stat
+  fixes + `nmin` + crash-safe nightly fold — fixes a live bug, jumps the queue) → **(C) the first
+  win** (morning recap + "What Homie Knows" page) → **(D) felt control** (one-key undo + Friction
+  Ledger + the `confirm.response` producer) → **(E) lights+climate autonomy** (hand-set rungs, not a
+  rolling-score engine). Then live with it a month and let the lived-gap log authorise the 7th thing.
+- **Just shipped (Phase A — the muzzle):** `core/voice.py` + `core/speech_budget.py` — ONE global
+  governor on `interface.say`. Tiles emit facts; the VoiceGate decides what the owner actually hears
+  (`interface.spoken`, ~6 proactive lines/day, owner-chosen) vs what defers to the recap as a lossy
+  count (`speech.deferred`). Safety/summons bypass the budget; an everyday `voice.mute` is the
+  fastest nag-kill. The cockpit renders only the governed channel — a tile cannot reach the owner
+  ungoverned. This is the first instance of the single-waist law the audit called the system's best idea.
 - **Just shipped (M6 — serving discipline):** the cortex now decodes tool calls under their
   JSON-Schema grammar (fewer malformed-call drops), **times every model call against a latency
   SLO** and emits `reason.served` telemetry (latency, p95, met?), and keeps the GPU warm only
