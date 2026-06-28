@@ -175,12 +175,17 @@ class Reason:
     def __init__(self, bus, llm: LLMClient, supervisor, remember, *, system_prompt: str = SYSTEM_PROMPT,
                  ledger: WakeLedger | None = None, budget: WakeBudget | None = None,
                  gate: SurpriseGate | None = None, slo: LatencySLO | None = None,
-                 warm: WarmPolicy | None = None, now: Callable[[], float] = time.monotonic) -> None:
+                 warm: WarmPolicy | None = None, memory_brief=None,
+                 now: Callable[[], float] = time.monotonic) -> None:
         self.bus = bus
         self.llm = llm
         self.sup = supervisor
         self.remember = remember
         self.system = system_prompt
+        # Active memory (M7): a provider of plain "what Homie knows about you" lines (learned
+        # routines + the distilled GIST), injected into the chat context so answers are informed
+        # by what it has learned. None = no memory in context (the cortex still works).
+        self._memory_brief = memory_brief
         # Wake governance (M3): SEE it (ledger), CALIBRATE it (per-zone surprise), CAP it
         # (event-clocked token bucket). Defaults are generous enough that a single moment
         # always wakes — the budget only bites under a sustained cold-start flood (C8).
@@ -324,6 +329,15 @@ class Reason:
             log.warning("reason: tool call %s failed (%r)", call.name, ex)
             return False
 
+    def _knows(self, cap: int = 8) -> list[str]:
+        """The plain 'what Homie knows about you' lines for the model context — capped, guarded."""
+        if self._memory_brief is None:
+            return []
+        try:
+            return list(self._memory_brief())[:cap]
+        except Exception:
+            return []
+
     async def _on_chat(self, event: Event) -> None:
         text = (event.payload or {}).get("text")
         if isinstance(text, str) and text.strip():
@@ -334,9 +348,13 @@ class Reason:
         any action is a VALIDATED tool call through a tile, never a direct actuator
         path. The reply goes back on `chat.reply` for the cockpit to render."""
         tools = self.sup.tool_catalog()
+        context = {"chat": text}
+        knows = self._knows()
+        if knows:
+            context["knows"] = knows          # answer informed by what Homie has learned
         try:
             proposal = await self._timed_propose(
-                system=CHAT_SYSTEM_PROMPT, context={"chat": text}, tools=tools, ts=ts, kind="chat")
+                system=CHAT_SYSTEM_PROMPT, context=context, tools=tools, ts=ts, kind="chat")
         except Exception as ex:  # a model/serving failure must never crash the bus
             log.warning("reason: chat propose failed (%r); apologising", ex)
             await self.bus.publish(Event(CHAT_REPLY, ts, {"text": "Sorry — I couldn't answer just now."}, source="reason"))

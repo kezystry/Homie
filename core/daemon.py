@@ -329,7 +329,25 @@ def build_daemon(home, perception: Perception | None, *, config: DaemonConfig | 
     # Reason is ALWAYS wired; a real client means the cortex is present, else the
     # null client makes the proposer a tested no-op. The anchor chat floor is wired
     # ONLY when there is no cortex, so chat is answered exactly once.
-    reason = Reason(bus, config.llm or NullLLMClient(), sup, remember)
+    # Active memory (M7): feed the cortex "what Homie knows about you" — the live firm beliefs
+    # plus the nightly-distilled GIST brief — so a chat answer is informed by what it has learned.
+    def _memory_brief() -> list[str]:
+        lines: list[str] = []
+        try:
+            from core.journal import what_homie_knows
+            lines += what_homie_knows(remember.beliefs(config.now(), min_prob=0.3))
+        except Exception:
+            pass
+        if config.state is not None:
+            try:
+                from core.gist import render_brief
+                from core.gist_store import GistStore
+                lines += render_brief(GistStore(Path(config.state) / "memory.ddn").load(), min_firmness=3)
+            except Exception:
+                pass
+        return lines
+
+    reason = Reason(bus, config.llm or NullLLMClient(), sup, remember, memory_brief=_memory_brief)
 
     # The Voice waist: the ONE governor on owner-facing speech. Tiles and the cortex emit
     # interface.say; this gate decides what the owner actually hears (interface.spoken) and

@@ -126,6 +126,27 @@ class CortexTests(unittest.IsolatedAsyncioTestCase):
         await reason.start()
         return bus, reason
 
+    async def test_chat_context_carries_what_homie_knows(self) -> None:
+        # Active memory (M7): a chat answer is informed by the learned brief.
+        llm = FakeLLM()
+        bus = Bus()
+        reason = Reason(bus, llm, SpySupervisor(CATALOG), FakeRemember(NOVEL),
+                        memory_brief=lambda: ["You usually leave around 8.", "Friday is film night."])
+        await reason.start()
+        await reason.answer_chat("what do you know about me?", 1.0)
+        await bus.drain()
+        self.assertIn("knows", llm.calls[-1]["context"])
+        self.assertIn("Friday is film night.", llm.calls[-1]["context"]["knows"])
+        await bus.aclose()
+
+    async def test_chat_without_a_memory_provider_omits_knows(self) -> None:
+        llm = FakeLLM()
+        bus, reason = await self._reason(llm)
+        await reason.answer_chat("hi", 1.0)
+        await bus.drain()
+        self.assertNotIn("knows", llm.calls[-1]["context"])     # no provider → no key, cortex unaffected
+        await bus.aclose()
+
     async def test_novel_event_wakes_llm(self) -> None:
         llm = FakeLLM()
         bus, reason = await self._reason(llm, NOVEL)
