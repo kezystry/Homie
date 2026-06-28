@@ -81,7 +81,9 @@
   # ---------------------------------------------------------------------------
   # python311 runs the daemon; git is the update channel (the box is a git checkout of the
   # repo, updated via scripts/update.py — pull + health-check + restart). See os/INSTALL.md.
-  environment.systemPackages = [ pkgs.python311 pkgs.git ];
+  # python311 runs the daemon; git is the update channel; xdotool is the desktop hand
+  # (the fixed safe-verb allowlist in core/desktop.py shells out to it for /close + media keys).
+  environment.systemPackages = [ pkgs.python311 pkgs.git pkgs.xdotool ];
 
   systemd.services.homie = {
     description = "Homie reasoning node (bus + Remember + Supervisor)";
@@ -124,9 +126,10 @@
         #
         # Desktop eyes + hands (the main PC / Stremio). Uncomment on the DESKTOP node to let
         # Homie see the active app + what's playing (facts, never frames) and control playback
-        # (a fixed safe-verb allowlist via xdotool). Off by default. DISPLAY defaults to :0.
-        # "HOMIE_DESKTOP=1"
-        # "HOMIE_DESKTOP_DISPLAY=:0"
+        # (a fixed safe-verb allowlist via xdotool). Enabled on this box (it runs the screen +
+        # Stremio); DISPLAY defaults to :0. Move these back to commented on a headless node.
+        "HOMIE_DESKTOP=1"
+        "HOMIE_DESKTOP_DISPLAY=:0"
         #
         # Let owner-typed system /commands (/update, /restart, /reboot, /rebuild, /rollback)
         # actually RUN from chat (owner's choice). The polkit rule below covers restart/reboot;
