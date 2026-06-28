@@ -51,6 +51,7 @@ _HELP = [
     "  /now         — what you're watching right now",
     "  /recommend   — your picks & taste (the recommendation page)",
     "  /mute [min]  — quiet for a while   ·   /unmute",
+    "  /close [app] — close the active window, or a named app (e.g. /close stremio)",
     "  /private on|off — stop/allow watching your screen",
     "  /model [name]— list the brains (general / dev) or switch to one",
     "  /update      — pull + health-check the latest version",
@@ -108,6 +109,11 @@ class SlashCommands:
         if cmd == "unmute":
             await self.bus.publish(Event("voice.unmute", ts, {}, source="commands"))
             return "Talking again."
+        if cmd == "close":
+            target = args[0] if args else None
+            await self.bus.publish(Event("desktop.control", ts,
+                                         {"verb": "close", "target": target}, source="commands"))
+            return f"Closing {target}." if target else "Closing the active window."
         if cmd == "private":
             on = not (args and args[0].lower() in ("off", "false", "0"))
             await self.bus.publish(Event("media.private", ts, {"on": on}, source="commands"))

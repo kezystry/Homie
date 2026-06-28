@@ -9,10 +9,11 @@ name = "desktop"
 summary = "See and control the main PC — Stremio/media playback (play/pause, skip, seek)."
 
 [subscribes]
-events = []          # acts via functions; auto-behaviors (e.g. dim on film-start) come later
+# desktop.control carries owner-typed /commands (e.g. /close) into the capability-gated act path.
+events = ["desktop.control"]
 
 [provides]
-intents = ["pause", "play", "skip", "next episode"]
+intents = ["pause", "play", "skip", "next episode", "close"]
 
 [[provides.functions]]
 name = "play_pause"
@@ -34,6 +35,15 @@ description = "Seek forward a little in what's playing."
 name = "skip_back"
 description = "Seek backward a little in what's playing."
 
+[[provides.functions]]
+name = "close"
+description = "Close a window on the main PC: the active window, or a named app like Stremio."
+[[provides.functions.params]]
+name = "app"
+type = "string"
+description = "Optional app to close (e.g. 'stremio'); omit to close the focused window."
+required = false
+
 [acts]
 actuators = [
     "desktop.play_pause",
@@ -42,6 +52,7 @@ actuators = [
     "desktop.seek_fwd",
     "desktop.seek_back",
     "desktop.stop",
+    "desktop.close",
 ]
 
 [permissions]

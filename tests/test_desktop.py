@@ -27,6 +27,7 @@ _DESKTOP_MAP = {
     "desktop.seek_fwd": "desktop:seek_fwd",
     "desktop.seek_back": "desktop:seek_back",
     "desktop.stop": "desktop:stop",
+    "desktop.close": "desktop:close",
 }
 
 
@@ -55,6 +56,25 @@ class ExecutorTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             await exe.drive("desktop:rm_rf_home", {})   # arbitrary "verb" → refused
         self.assertEqual(runs, [])                       # nothing executed
+
+    async def test_close_active_window_is_a_fixed_window_action(self) -> None:
+        runs: list = []
+        exe = DesktopExecutor(run=lambda args: runs.append(args))
+        await exe.drive("desktop:close", {})             # no target → active window
+        self.assertEqual(runs, [["xdotool", "getactivewindow", "windowclose"]])
+
+    async def test_close_named_app_uses_its_allowlisted_argv(self) -> None:
+        runs: list = []
+        exe = DesktopExecutor(run=lambda args: runs.append(args))
+        await exe.drive("desktop:close", {"target": "Stremio"})   # case-insensitive
+        self.assertEqual(runs, [["xdotool", "search", "--class", "stremio", "windowclose"]])
+
+    async def test_close_unknown_app_is_refused_not_run(self) -> None:
+        runs: list = []
+        exe = DesktopExecutor(run=lambda args: runs.append(args))
+        with self.assertRaises(ValueError):
+            await exe.drive("desktop:close", {"target": "online_banking"})
+        self.assertEqual(runs, [])                        # an un-allowlisted app never closes
 
     async def test_no_runner_is_a_safe_noop(self) -> None:
         exe = DesktopExecutor()                          # not wired on this host
@@ -91,6 +111,17 @@ class GatedEndToEndTests(unittest.IsolatedAsyncioTestCase):
             await sup.call_function("play_pause")
             await bus.drain()
             self.assertEqual(exe.driven, ["play_pause"])  # the cortex/voice can pause the film
+            await bus.aclose()
+
+    async def test_close_command_event_drives_through_the_gate(self) -> None:
+        with TemporaryDirectory() as d:
+            bus, sup, exe, runs = await self._setup(Path(d))
+            # what /close stremio publishes — routed by the tile to the gated close actuator
+            await bus.publish(Event("desktop.control", 0.0,
+                                    {"verb": "close", "target": "stremio"}, source="commands"))
+            await bus.drain()
+            self.assertEqual(exe.driven, ["close:stremio"])
+            self.assertEqual(runs, [["xdotool", "search", "--class", "stremio", "windowclose"]])
             await bus.aclose()
 
     async def test_forged_request_without_a_capability_is_refused(self) -> None:

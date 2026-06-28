@@ -18,6 +18,17 @@ import logging
 
 log = logging.getLogger("homie.desktop")
 
+# The desktop actuators a tile may drive (manifest) and the identity act-map that binds each
+# `desktop.<verb>` actuator to the `desktop:<verb>` entity the DesktopExecutor handles. Merged
+# into the live act-map only when HOMIE_DESKTOP=1 (scripts/run.py), so desktop control is mapped
+# exactly when it is enabled — and refused (unmapped) otherwise.
+DESKTOP_ACTUATORS = ("play_pause", "next", "prev", "seek_fwd", "seek_back", "stop", "close")
+
+
+def desktop_act_map() -> dict[str, str]:
+    """`{'desktop.play_pause': 'desktop:play_pause', …}` — the identity binding for the act-map."""
+    return {f"desktop.{v}": f"desktop:{v}" for v in DESKTOP_ACTUATORS}
+
 
 class DesktopExecutor:
     """The ONLY desktop actions Homie can take — a closed set of safe media verbs, each a fixed
@@ -36,6 +47,17 @@ class DesktopExecutor:
         "stop":       ["key", "--clearmodifiers", "Escape"],
     }
 
+    # Closing a window is still a window-manager action, NOT a process kill or a shell — it asks
+    # the focused (or an allowlisted) window to close, so a refusing app keeps its unsaved work.
+    # `close` with no target shuts the ACTIVE window (the common "I'm watching Stremio, close it").
+    ACTIVE_CLOSE = ["getactivewindow", "windowclose"]
+    # Closing a NAMED app: a FIXED argv per app, keyed by name. The owner's typed name only
+    # SELECTS a key here — it is never interpolated into the command — so this stays a closed
+    # allowlist (no window-target injection from a malicious addon, same rule as the verbs).
+    CLOSE_TARGETS: dict[str, list[str]] = {
+        "stremio": ["search", "--class", "stremio", "windowclose"],
+    }
+
     def __init__(self, *, run=None) -> None:
         self._run = run            # injected fixed-argv runner (set up in deploy); None = no-op
         # NB: the X11 DISPLAY is set on the injected runner's environment in deploy/home.py
@@ -47,6 +69,8 @@ class DesktopExecutor:
 
     async def drive(self, entity_id: str, command: object) -> None:
         verb = entity_id[len(self.PREFIX):]
+        if verb == "close":
+            return await self._close(command)
         args = self.VERBS.get(verb)
         if args is None:           # not in the allowlist → refuse, NEVER fall through to a shell
             raise ValueError(f"desktop: refused unknown verb {verb!r} (not in the safe allowlist)")
@@ -54,6 +78,23 @@ class DesktopExecutor:
         if self._run is not None:
             self._run(["xdotool", *args])   # fixed argv only — no shell, no string interpolation
         log.info("desktop: %s", verb)
+
+    async def _close(self, command: object) -> None:
+        """Close the active window, or an allowlisted named app (`{'target': 'stremio'}`). The
+        name only picks a fixed argv from CLOSE_TARGETS — never interpolated — so an unknown app
+        is refused, not run."""
+        target = command.get("target") if isinstance(command, dict) else None
+        if target:
+            args = self.CLOSE_TARGETS.get(str(target).strip().lower())
+            if args is None:
+                raise ValueError(f"desktop: refused close of unknown app {target!r} "
+                                 f"(not in the close allowlist: {', '.join(self.CLOSE_TARGETS)})")
+        else:
+            args = self.ACTIVE_CLOSE
+        self.driven.append(f"close:{str(target).lower() if target else 'active'}")
+        if self._run is not None:
+            self._run(["xdotool", *args])
+        log.info("desktop: close %s", target or "(active window)")
 
     def on_state_change(self, handler) -> None:
         return  # desktop control emits no state echo; nothing to reconcile

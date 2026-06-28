@@ -110,10 +110,18 @@ def _perception():
 
 def _act_map() -> ActMap | None:
     """The actuator allowlist + never-touch guard, from deploy/act_map.toml. An
-    unreadable map means no actuators are mapped (the loop still runs)."""
+    unreadable map means no actuators are mapped (the loop still runs). When desktop control is
+    enabled (HOMIE_DESKTOP=1), the desktop identity actuators are merged in so they resolve to
+    the DesktopExecutor — and stay unmapped/refused when it's off."""
     path = ROOT / "deploy" / "act_map.toml"
     try:
-        return ActMap.load(path)
+        import tomllib
+        from core.desktop import desktop_act_map
+        raw = tomllib.loads(path.read_text("utf-8"))
+        forward = dict(raw.get("actuators", {}))
+        if os.environ.get("HOMIE_DESKTOP") == "1":
+            forward.update(desktop_act_map())
+        return ActMap.from_forward(forward, raw.get("never_touch", {}).get("entities", []))
     except Exception as ex:
         log.warning("act map %s unreadable (%r); no actuators mapped", path, ex)
         return None

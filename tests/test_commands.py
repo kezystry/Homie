@@ -48,6 +48,28 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(events[0][1]["seconds"], 1800.0)        # 30 min
         self.assertIn("30 min", replies[-1])
 
+    async def test_close_publishes_desktop_control(self) -> None:
+        bus = Bus()
+        ctrl: list = []
+        bus.subscribe("desktop.control", lambda e: ctrl.append(e.payload))
+        sc = SlashCommands(bus, root="/opt/homie")
+        await sc.start()
+        await bus.publish(Event("chat.message", 1.0, {"text": "/close stremio"}, source="cockpit"))
+        await bus.drain()
+        await sc.stop(); await bus.aclose()
+        self.assertEqual(ctrl, [{"verb": "close", "target": "stremio"}])
+
+    async def test_close_no_arg_targets_the_active_window(self) -> None:
+        bus = Bus()
+        ctrl: list = []
+        bus.subscribe("desktop.control", lambda e: ctrl.append(e.payload))
+        sc = SlashCommands(bus, root="/opt/homie")
+        await sc.start()
+        await bus.publish(Event("chat.message", 1.0, {"text": "/close"}, source="cockpit"))
+        await bus.drain()
+        await sc.stop(); await bus.aclose()
+        self.assertEqual(ctrl, [{"verb": "close", "target": None}])
+
     async def test_private_on_and_off(self) -> None:
         _, on = await self._run("/private on")
         self.assertEqual(on[0], ("media.private", {"on": True}))

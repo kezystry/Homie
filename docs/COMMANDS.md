@@ -59,6 +59,12 @@ Quick test without editing the config (one session, current shell):
 sudo HOMIE_DESKTOP=1 HOMIE_DESKTOP_DISPLAY=:0 systemctl restart homie
 ```
 
+With desktop control on, you can drive playback and **close windows from chat** (`python3 -m
+cockpit`): `/close` shuts the focused window; `/close stremio` closes Stremio by name. Closing is
+a window-manager action (it asks the window to close), never a process-kill or a shell — only the
+focused window or an app on the fixed close-allowlist (`core/desktop.py:CLOSE_TARGETS`) can be
+named, so nothing arbitrary is ever targeted.
+
 ## 3. See what Homie sees — status, "now watching", recommendations
 
 ```bash
