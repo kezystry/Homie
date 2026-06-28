@@ -410,3 +410,58 @@ def fold_day(prior: list[Schema], observations: list[DayObs], *, daytype: str,
         out.append(replace(s, kind=_kind_for(s.beta, s.kind)))
     out += seqs
     return _prune_to_ceiling(out, max_schemas)
+
+
+# --------------------------------------------------------------------------- #
+# Slice 6 — the prose BRIEF: the honest, plain-words "What Homie Knows" render
+# --------------------------------------------------------------------------- #
+# TENSE IS THE HONESTY CONTRACT (council, HCI): present tense only for a live belief; a
+# "starting to notice" hedge below the evidence floor; PAST tense the instant confidence falls
+# below the action threshold — so a faded line can never read as a present claim. The exact
+# number is always revealable; the word is what the owner reads.
+ACTION_THRESHOLD = 400   # milli-confidence below which a proven line is spoken in the past tense
+_CONF_WORDS = ((900, "almost always"), (650, "usually"), (400, "often"), (0, "sometimes"))
+_DAYTYPE_PHRASE = {"wd": "on weekdays", "we": "at the weekend", "aw": "when you're away"}
+_DAYPART_PHRASE = {"dawn": "early", "am": "in the morning", "mid": "around midday",
+                   "pm": "in the afternoon", "eve": "in the evening", "night": "at night"}
+
+
+def conf_word(c_q: int) -> str:
+    """A TOTAL (milli-confidence → word) map, thresholds pinned. Never overclaims."""
+    for thr, word in _CONF_WORDS:
+        if c_q >= thr:
+            return word
+    return "sometimes"
+
+
+def _clause(tokens: tuple[str, ...]) -> str:
+    """tokens → a plain phrase. ('coffee','kitchen') → 'coffee in the kitchen'. Render-only —
+    never the raw token soup; an off-limits token never reaches here (the fold OFF-fenced it)."""
+    parts = [t.replace("_", " ") for t in tokens]
+    if len(parts) == 2:
+        return f"{parts[0]} in the {parts[1]}"
+    return " · ".join(parts)
+
+
+def line_text(s: Schema) -> str:
+    """One behaviour line as an honest sentence, its tense carrying its confidence."""
+    when = f"{_DAYTYPE_PHRASE.get(s.daytype, s.daytype)} {_DAYPART_PHRASE.get(s.daypart, s.daypart)}"
+    what = _clause(s.tokens)
+    c, f = confidence_q(s.beta), firmness(s.beta)
+    if f < GIST_NMIN:                                  # below the evidence floor → tentative
+        return f"I'm starting to notice {what} {when} — not sure yet."
+    if c < ACTION_THRESHOLD:                           # proven once, now faded → past tense
+        return f"You used to {what} {when}."
+    return f"{when.capitalize()} you {conf_word(c)} {what}."
+
+
+def render_brief(schemas: list[Schema], *, min_firmness: int = 0) -> list[str]:
+    """The plain-words brief, most-telling first. Pure (no I/O). `min_firmness` can hide the
+    'starting to notice' tier for a tighter glance. The cortex reads this; the owner sees it on
+    the 'What Homie Knows' page — same honest text, never a stale belief dressed as present."""
+    out = []
+    for s in sorted(schemas, key=lambda s: (-_payoff(s), s.key())):
+        if firmness(s.beta) < min_firmness:
+            continue
+        out.append(line_text(s))
+    return out
