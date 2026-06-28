@@ -106,6 +106,8 @@ in
     openbox    # tiny WM that forces Stremio fullscreen in the X session
     ffmpeg     # cockpit camera: grabs single frames for the in-terminal thumbnail
     v4l-utils  # `v4l2-ctl --list-formats-ext` to confirm a webcam speaks MJPEG
+    xdotool    # Homie's desktop eyes+hands: read the active window/title + send media keys
+               # (HOMIE_DESKTOP=1). Fixed-argv only — the safe verb allowlist in core/desktop.py
 
     # `homie-watch` — the one-line "watch movies" command. Runs Stremio fullscreen
     # in a minimal X session straight from the console. Run as the `homie` user,

@@ -50,6 +50,21 @@ def _perception():
     Unset = no live intake yet (events arrive via tests/mesh)."""
     name = os.environ.get("HOMIE_FAKE_PERCEPTION")
     if not name:
+        if os.environ.get("HOMIE_DESKTOP") == "1":
+            # On the desktop node: the eyes are the X11 DesktopAdapter (active app + media
+            # title/state via xdotool — facts, never frames). Feeds the WatchLog + GIST.
+            import subprocess
+            from core.perceive import Perceive
+            from perception.desktop_adapter import DesktopAdapter, XdotoolProbe
+
+            display = os.environ.get("HOMIE_DESKTOP_DISPLAY", ":0")
+            env = dict(os.environ, DISPLAY=display)
+
+            def run(args):
+                return subprocess.run(args, capture_output=True, text=True, env=env, timeout=3).stdout
+
+            print(f"homie: desktop eyes — xdotool on DISPLAY={display}", flush=True)
+            return Perceive(DesktopAdapter(XdotoolProbe(display=display, run=run, now=__import__("time").time)))
         return None
     from core.perceive import Perceive  # lazy: only the demo path needs these
     from core.scenarios import build

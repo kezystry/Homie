@@ -49,8 +49,32 @@ def home_from_env():
         # working-but-slow command isn't reported as a failure (HOMIE_HOME_RESULT_TIMEOUT).
         timeout = float(os.environ.get("HOMIE_HOME_RESULT_TIMEOUT", "30"))
         log.info("home: Home Assistant adapter -> %s (confirm timeout %.0fs)", url, timeout)
-        return HomeAssistantClient(lambda: WebSocketHAConnection(url), token, result_timeout=timeout)
+        return wrap_desktop(HomeAssistantClient(lambda: WebSocketHAConnection(url), token, result_timeout=timeout))
     if url and not token:
         log.warning("HOMIE_HOME_URL=%s set but HOMIE_HOME_TOKEN missing; using LoggingHome "
                     "(no physical actuation). Create a long-lived token in HA and set it.", url)
-    return LoggingHome()
+    return wrap_desktop(LoggingHome())
+
+
+def _xdotool_env() -> dict:
+    """The X session env the kiosk runs under, so xdotool reaches the right display."""
+    env = dict(os.environ)
+    env.setdefault("DISPLAY", os.environ.get("HOMIE_DESKTOP_DISPLAY", ":0"))
+    return env
+
+
+def wrap_desktop(home):
+    """With HOMIE_DESKTOP=1, wrap the home so `desktop:*` actuators control the main PC via the
+    fixed-argv DesktopExecutor (the safe verb allowlist), routing everything else to `home`. Off
+    by default — desktop control only exists when the owner turns it on, on the desktop node."""
+    if os.environ.get("HOMIE_DESKTOP") != "1":
+        return home
+    import subprocess
+    from core.desktop import CompositeHome, DesktopExecutor
+
+    def run(args: list[str]) -> None:
+        subprocess.run(args, env=_xdotool_env(), timeout=5,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    log.info("home: desktop control ENABLED (fixed verb allowlist via xdotool)")
+    return CompositeHome(home, DesktopExecutor(run=run))
