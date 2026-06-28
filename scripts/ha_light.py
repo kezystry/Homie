@@ -45,7 +45,12 @@ async def main(entity: str, state: str, pct: int) -> None:
     url, token = os.environ.get("HOMIE_HOME_URL"), os.environ.get("HOMIE_HOME_TOKEN")
     if not url or not token:
         raise SystemExit("set HOMIE_HOME_URL + HOMIE_HOME_TOKEN (source /etc/homie-ha.env)")
-    cmd = {"state": "off"} if state == "off" else {"state": "on", "brightness_pct": pct}
+    if state == "off":
+        cmd = {"state": "off"}
+    elif pct is None:
+        cmd = {"state": "on"}                       # plain on — no brightness (most compatible)
+    else:
+        cmd = {"state": "on", "brightness_pct": pct}
     # A sluggish hub (DIRIGERA) can take ~10s to confirm; wait generously so a working command
     # isn't reported as a timeout. Tunable via HOMIE_HOME_RESULT_TIMEOUT.
     timeout = float(os.environ.get("HOMIE_HOME_RESULT_TIMEOUT", "30"))
@@ -63,5 +68,5 @@ if __name__ == "__main__":
     if len(sys.argv) < 3 or sys.argv[2] not in ("on", "off"):
         raise SystemExit("usage: ha_light.py <actuator-or-entity> <on|off> [brightness_pct]")
     target, state = sys.argv[1], sys.argv[2]
-    brightness = int(sys.argv[3]) if len(sys.argv) > 3 else 70
+    brightness = int(sys.argv[3]) if len(sys.argv) > 3 else None  # omit → plain on/off
     asyncio.run(main(resolve(target), state, brightness))
