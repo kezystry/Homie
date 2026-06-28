@@ -5,7 +5,9 @@
 #     can never write it (it may still be read for the pattern of life)
 #
 # Homie actuator names are semantic + room-based; the entity_ids are IKEA/HA's.
-# Fill these in for your home (see Q18/Q22 in PLAN.md).
+# Don't hand-type these: run `python3 scripts/ha_setup.py` to discover every bulb from
+# your live Home Assistant and generate this file. Full guide: docs/HA-SETUP.md.
+# The values below are PLACEHOLDERS for a box with no HA wired yet.
 
 [actuators]
 "light.living_room" = "light.tradfri_living_room"

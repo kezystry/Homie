@@ -173,6 +173,7 @@ chainloaded from the boot menu — Homie never writes to it. Every `nixos-rebuil
 rollback-able generation, and the box updates itself via a pull → health-check → restart channel.
 
 → **[os/INSTALL.md](os/INSTALL.md)** · guided walkthrough: **[docs/WALKTHROUGH.md](docs/WALKTHROUGH.md)**
+· connect the lights: **[docs/HA-SETUP.md](docs/HA-SETUP.md)** (Home Assistant + DIRIGERA bulbs)
 
 ## Project structure
 
