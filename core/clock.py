@@ -18,8 +18,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
+from datetime import datetime
 from typing import Awaitable, Callable
+from zoneinfo import ZoneInfo
 
 from core.tile import Event
 
@@ -30,6 +33,8 @@ TIMER_CANCEL = "timer.cancel"  # in:  {"key": str} — drop a pending timer, no 
 TIMER_FIRED = "timer.fired"    # out: {"key": str, "data": any?}
 TICK_MINUTE = "tick.minute"
 TICK_HOUR = "tick.hour"
+TIME_MORNING = "time.morning"  # out: {"hour": h} — once per local day at/after the morning hour
+DEFAULT_MORNING_HOUR = 7
 
 
 class Clock:
@@ -43,11 +48,16 @@ class Clock:
         now: Callable[[], float] = time.time,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         tick_seconds: float = 60.0,
+        morning_hour: int = DEFAULT_MORNING_HOUR,
+        tz: str | None = None,
     ) -> None:
         self.bus = bus
         self._now = now
         self._sleep = sleep
         self._tick_seconds = max(0.0, tick_seconds)
+        self._morning_hour = morning_hour
+        self._tz = ZoneInfo(tz) if tz else (ZoneInfo(os.environ["HOMIE_TZ"]) if os.environ.get("HOMIE_TZ") else None)
+        self._last_morning: str | None = None  # local date we last fired time.morning on
         self._subs: list = []
         self._tick_task: asyncio.Task | None = None
         self._timers: dict[object, asyncio.Task] = {}
@@ -82,10 +92,21 @@ class Clock:
                 if hour != last_hour:
                     last_hour = hour
                     await self.bus.publish(Event(TICK_HOUR, now, {}, source="clock"))
+                await self._maybe_morning(now)
         except asyncio.CancelledError:
             raise
         except Exception:
             log.exception("clock: tick loop failed")
+
+    async def _maybe_morning(self, now: float) -> None:
+        """Fire `time.morning` exactly once on each local day, the first tick at or after the
+        morning hour — the trigger the day briefing wakes on. Event-clocked off `now`, so a
+        replayed log reproduces it deterministically; the local date gates the once-a-day."""
+        local = datetime.fromtimestamp(now, self._tz) if self._tz else datetime.fromtimestamp(now)
+        today = local.date().isoformat()
+        if local.hour >= self._morning_hour and self._last_morning != today:
+            self._last_morning = today
+            await self.bus.publish(Event(TIME_MORNING, now, {"hour": local.hour}, source="clock"))
 
     # -- the timer seam ------------------------------------------------------- #
     async def _on_set(self, event: Event) -> None:

@@ -24,7 +24,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from core.agenda import AT, ALLDAY, DUE, ROUTINE, AgendaView
+from core.agenda import AT, ALLDAY, DUE, FLOAT, ROUTINE, AgendaView
 from core.route import RoutePlan, sequence, zone_cost
 
 TIMELINE_MAX = 3   # the spine: at most three timed things, then a lossy "(+N more)"
@@ -135,7 +135,11 @@ def build(view: AgendaView, now: float, *, weather: str | None = None,
     timeline = [_timeline_label(it, tz) for it in chosen]
     timeline_overflow = max(0, len(timed) - len(chosen))
 
-    due_items = view.due(now, due_horizon_s)
+    # The due lane: deadlined items within the horizon first, then undated FLOAT to-dos
+    # ("anytime today"). An undated task must not vanish just because it has no clock.
+    deadlined = view.due(now, due_horizon_s)
+    undated = [it for it in today if it.when.kind == FLOAT and it.kind == DUE]
+    due_items = deadlined + undated
     due = [_due_label(it, now, tz) for it in due_items[:DUE_MAX]]
     due_overflow = max(0, len(due_items) - DUE_MAX)
 

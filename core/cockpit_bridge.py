@@ -58,6 +58,7 @@ class CockpitPolicy:
                              # internally by the VoiceGate; only the spoken channel renders)
         "voice.**",          # mute/unmute state, so a UI can show "quiet for an hour"
         "speech.deferred",   # lines held for the morning recap (a "you have N notes" hint)
+        "briefing.ready",    # the full morning surface (recap + day briefing) for the screen
         "chat.**",           # chat replies routed back
         "security.**",    # alerts the owner should see
         "presence.**",    # who/what is around (no pixels — guarded)

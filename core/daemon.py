@@ -75,6 +75,7 @@ class DaemonConfig:
     act_map: ActMap | None = None      # None = no actuators mapped (empty allowlist)
     compact_threshold: int = 5000      # durability-log auto-compact floor
     tick_seconds: float = 60.0         # Clock cadence: tick.minute (+ tick.hour on the hour)
+    morning_hour: int = 7              # local hour the clock fires time.morning (the day briefing)
     compact_interval: float = 3600.0   # how often the housekeep loop ticks
     ritual_interval: float = 86400.0   # nightly consolidation cadence
     llm: LLMClient | None = None       # a real client => the reasoning cortex is present
@@ -261,7 +262,7 @@ def build_daemon(home, perception: Perception | None, *, config: DaemonConfig | 
 
     cockpit = CockpitBridge(bus, path=config.cockpit_sock) if config.cockpit_sock else None
     mesh = MeshBridge(config.node_id, bus, config.mesh_link) if config.mesh_link is not None else None
-    clock = Clock(bus, now=config.now, tick_seconds=config.tick_seconds)
+    clock = Clock(bus, now=config.now, tick_seconds=config.tick_seconds, morning_hour=config.morning_hour)
 
     return Daemon(bus=bus, remember=remember, consent=consent, sup=sup, act=act,
                   reconciler=reconciler, reason=reason, voice=voice, anchor=anchor,

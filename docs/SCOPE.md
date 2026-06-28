@@ -44,8 +44,14 @@ This is the *whole* near-term build. Everything else is deferred.
      proximity via owner-authored `deploy/zones.toml`; live map-routing is the gated
      `cost()`-seam upgrade), `core/briefing.py` (frozen-cap render: timeline≤3, due≤2,
      route≤1, weather woven, honest-empty, ONE budgeted spoken line). Tests:
-     `tests/test_agenda.py`. ⏳ **Next:** the bus-wiring tile (assemble at morning, emit the
-     one budgeted `interface.say`, surface on the status page) + the backward recap line.
+     `tests/test_agenda.py`.
+   - ✅ **Wired into the daemon:** the clock fires `time.morning` once/day (`morning_hour`);
+     the `personal` tile assembles the Agenda from `ctx.beliefs()` (new Context capability) +
+     the owner's tasks, builds the Briefing, SPEAKS exactly ONE budgeted line through the
+     VoiceGate, and emits the full page on `briefing.ready` (cockpit-visible). Quiet day → it
+     stays silent but still renders an honest page. Tests: `tests/test_briefing_wiring.py`.
+   - ⏳ **Next:** the backward recap line (nightly fold composes `recap_line`) + live HA
+     calendar/weather/todo source adapters wired to real entities + on-page correction.
 4. **The "What Homie Knows" page + `memory.overlay`** — plain rows from the GIST brief, each
    with a confidence word + provenance ("from 32 days" vs "from 3 days"), three one-tap
    actions ([that's me] / [not quite] / [lock]).
