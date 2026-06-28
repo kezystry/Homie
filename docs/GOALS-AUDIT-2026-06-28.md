@@ -19,7 +19,10 @@ live with it, let real gaps authorise the rest.** That's holding. The big change
 plan: **the physical layer is now LIVE** (HA + DIRIGERA + all bulbs + Homie driving them), which
 promotes a few things from "someday" to "now" — see *Improvements* at the end.
 
-Roughly: **~35% built, ~25% planned-next, ~35% deferred-on-purpose, ~5% was slipping — now caught.**
+In shape (not made-up precision — just honest buckets): **the "knows-me" soul is largely built**;
+**a focused set is planned next** (undo + autonomy + the calendar/weather wiring); **the big pillars
+are deliberately deferred** (full guardian, business/KartenWerk, vision, self-upgrade) until the soul
+is lived-in; and **a handful of wants had slipped through with no home** — now caught below.
 
 ---
 
@@ -31,7 +34,7 @@ Roughly: **~35% built, ~25% planned-next, ~35% deferred-on-purpose, ~5% was slip
 | Day briefing (today, what's on, route) | ✅ | `core/agenda/briefing/route.py` — your add, council-designed |
 | Effortlessness / never a nag | ✅ | the SpeechBudget muzzle (~6/day) + mute |
 | Adaptive personality (humor vs minimal) | 🅿️ | designed as render-time "ToneState"; deferred (apparatus) |
-| Secret/personal name + duress anti-name | 👤 🅿️ | design locked; **you set it when ready** |
+| Secret/personal name + duress anti-name | 👤 🅿️ | **now a password** (owner-only, hash-verified, never stored/logged; the spoken-in-chat unlock idea is retired) — you set it |
 | "Feel alive" / anticipates perfectly | 🅿️ | AliveState + silent-anticipation designed; after the basics |
 | First-magic: right thing before I ask | 🔜 | comes with Phase E autonomy (offer→silent) |
 

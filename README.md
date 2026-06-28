@@ -6,7 +6,7 @@
 
 No cloud. No accounts. No telemetry. Nothing ever leaves your network.
 
-[![tests](https://img.shields.io/badge/tests-366%20passing-brightgreen)](tests/)
+[![tests](https://img.shields.io/badge/tests-443%20passing-brightgreen)](tests/)
 [![python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![dependencies](https://img.shields.io/badge/runtime%20deps-stdlib%20only-success)](#engineering-discipline)
 [![privacy](https://img.shields.io/badge/cloud-none-critical)](#security--privacy)
@@ -51,7 +51,7 @@ ever-present — reimagined as something personal, private, and entirely yours.
 | 🧠 **Learns by friction** | No rules to write. It proposes, you correct, it remembers — a decayed, pattern-of-life model that forgets stale habits and adapts. |
 | 🧩 **Modular by tiles** | Capability is added as self-contained *tiles* (living cells: self-learning, self-healing), never by touching the core. |
 | 🛡️ **Safe by structure** | A priority floor — *safety > security > automation > convenience > ambient* — is enforced by the bus, and every actuation carries a capability handle the trusted core mints. |
-| 🌙 **Ambient & resilient** | Headless, text-first, and meant to disappear into the home. An encrypted mesh spans your devices; losing one doesn't stop it. |
+| 🌙 **Ambient & resilient** | Headless, text-first, and meant to disappear into the home. *Designed* to span your devices over an encrypted mesh — the seam is built; today it runs single-node. |
 | ⚡ **Frugal** | The heavy GPU brain wakes only when a moment is genuinely novel (an event-clocked surprise budget), and sleeps the rest of the time. |
 
 ## How it works
@@ -132,13 +132,16 @@ flowchart LR
 | **Tile runtime** | ✅ | In-process **and** subprocess isolation, supervision, self-healing, hot-swappable tiles. |
 | **Friction learning** | ✅ | Reversals become lessons; home-echo canonicalization stops Homie mis-reading its own actions. |
 | **Capability-gated actuation** | ✅ | A tile drives only what its manifest declares, at its declared priority — a forged command is refused, even over the subprocess wire. |
-| **Wake governance** | ✅ | Event-clocked surprise budget keeps the GPU asleep ~95% of the time; safety wakes are exempt. |
+| **Wake governance** | ✅ | An event-clocked surprise budget wakes the GPU brain only on genuinely novel moments and reports the real asleep-fraction as a number; safety wakes are exempt. |
 | **Home Assistant adapter** | ✅ | Drives real DIRIGERA/Tradfri lights and hears human switch-flips, over a stdlib WebSocket with a liveness heartbeat. |
-| **Serving discipline** | ✅ | Local-model latency SLO, warm/cold GPU policy, and JSON-schema-constrained tool decoding. |
+| **Anti-nag speech governor** | ✅ | One global cap on how often Homie speaks unprompted (owner-set, ~6/day) + an everyday mute; safety always heard, overflow defers. |
+| **Honest beliefs** | ✅ | Every learned routine is a true probability in [0,1] that mean-reverts when a habit stops; a coincidence is never stated as fact. |
+| **Morning surface** | ✅ | A plain "what Homie knows" page + a daily recap (yesterday) and briefing (today's agenda + a sensible errand order), capped so it never floods. |
+| **Serving discipline** | ✅ | Local-model latency SLO, warm/cold GPU policy, and JSON-schema-constrained tool decoding (the GPU brain itself is not yet stood up). |
 | **Distilled memory (GIST)** | 🔬 | A deterministic, integer-exact "field notebook" of the home's rhythm — the integer core is built; the full format is in design ([spec](docs/MEMORY-GIST.md)). |
 | Privacy guard · undo · voice · camera head | ⏳ | On the roadmap (M7–M11). |
 
-**366 stdlib tests pass** — and the tested graph *is* the shipped graph.
+**443 stdlib tests pass** — and the tested graph *is* the shipped graph.
 
 ## Quickstart
 
@@ -147,7 +150,7 @@ Python 3.11+, **standard library only** — no dependencies to run the spine.
 ```sh
 git clone https://github.com/kezystry/homie.git && cd homie
 
-python3 -m unittest discover -s tests   # the full suite (366 tests)
+python3 -m unittest discover -s tests   # the full suite (443 tests)
 python3 scripts/spine_demo.py           # the five-part loop, end to end on one node
 python3 scripts/status.py --text        # a live status board (great over SSH)
 python3 scripts/run.py                  # the daemon (bus + Remember + Supervisor + tiles)
@@ -181,7 +184,7 @@ rollback-able generation, and the box updates itself via a pull → health-check
 core/        the spine: bus · remember · reason · act · reconcile · tile runtime ·
              capability · wake_ledger · serving · ha · ws · canonical · ritual · mesh …
 tiles/       living tiles — personal · security · lighting — + _template for new ones
-tests/       stdlib unittest suite (39 files, 366 tests)
+tests/       stdlib unittest suite (47 files, 443 tests)
 scripts/     run.py (daemon) · spine_demo.py (demo) · status.py (live board) · update.py
 os/          dual-boot hardened NixOS profile + INSTALL.md
 deploy/      runtime config — act_map.toml · llm.py · home.py · MODEL.md (model card)

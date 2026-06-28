@@ -26,10 +26,13 @@
 - **Engineering:** `docs/INTERNALS.md` (decisions), `docs/PROTOCOL.md` (tile wire
   protocol), `docs/SECURITY.md` (privacy/identity), `docs/ARCHITECTURE.md`, `os/`
   (dual-boot NixOS + `INSTALL.md`).
-- **Code:** `core/` (`bus`, `remember`, `tile` runtime + channels, `mesh`, `act`,
-  `reason` (cortex: novelty-gated LLM decide loop), `reconcile`, `consent`,
-  `canonical`, `ritual` (nightly consolidation)), `tiles/` (`personal`, `security`,
-  `lighting`), `tests/` (295 passing), `scripts/run.py` (daemon), `scripts/spine_demo.py`.
+- **Code:** `core/` (`bus`, `remember` (now with honest `prob`/`firm` beliefs), `tile`
+  runtime + channels, `clock`, `mesh`, `act` + `capability`, `reason` (cortex) + `serving`,
+  `reconcile`, `consent`, `canonical`, `ritual`, `gist`; the anti-nag waist `voice` +
+  `speech_budget`; the morning surface `journal` + `recap` + `agenda` + `briefing` + `route`;
+  the HA hand `ha` + `ws` + `ha_discovery`), `tiles/` (`personal`, `security`, `lighting`),
+  `tests/` (443 passing), `scripts/` (`run.py` daemon, `ha_setup.py`, `ha_light.py`,
+  `spine_demo.py`, `status.py`).
 - **Importable notes:** `obsidian/` is a cross-linked Obsidian vault mirroring the docs.
 
 ## Decided architecture (see docs/PLAN.md)

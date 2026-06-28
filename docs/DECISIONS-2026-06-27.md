@@ -127,6 +127,20 @@ decisions:
 - **Same delivery as the recap:** on a screen when home + a phone notification; ONE budgeted
   proactive surface/day, capped in code, honest-empty, never a wall of text.
 
+## Secret name = a password (2026-06-28) — owner-only, never stored
+- **The secret/personal name is ALSO one of the owner's passwords. Only the owner knows it.**
+  Homie (and any agent helping build it) must **never ask for it, never store it in plaintext,
+  never log it, never echo it.** It is a credential.
+- **Verified by hash, never held.** Like the LUKS/login secret, it is checked against a stored
+  hash (scrypt/Argon2 per `docs/SECURITY.md`) — Homie can recognise a correct entry without ever
+  knowing the word. It gates unlock/auth, not a chat feature.
+- **RETIRED — the "speak the secret name in chat to unlock the warm register" idea.** A password
+  must never be typed into a chat/transcript/log, so the brainstorm's spoken-unlock mechanism is
+  dropped. If a spoken intimacy/candor trigger is ever wanted, it must be a DIFFERENT, non-secret
+  word. The secret name lives only at the auth/decryption boundary.
+- The **duress anti-name** stays a separate credential (also hash-verified) that triggers the
+  panic/duress posture — never the same secret, never logged.
+
 ## Still open / to confirm later
 - The owner's interview is captured; remaining specifics (exact DHL access, KartenWerk
   marketplace APIs, day-type calendar for memory, half-life tuning) are deferred to their tiles.

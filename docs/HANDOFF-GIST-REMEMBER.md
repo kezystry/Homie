@@ -23,7 +23,7 @@ designed, what is verified, and the **open questions where I want you to push ba
    GIST code that exists yet).
 
 ## 2. What is BUILT vs DESIGNED (do not let the docs blur this)
-- **BUILT, tested, green (366 tests total):**
+- **BUILT, tested, green (443 tests total):**
   - `core/remember.py` — the existing pattern-of-life model (predates this work). Unchanged here.
   - `core/gist.py` **slice 2 only** — the integer STATE core *in isolation*: fixed-point stat
     objects (`Beta`, `TimeStat`, `Schema`), the pinned `decay_q` operator, integer
@@ -98,7 +98,7 @@ can truly guarantee cross-host byte-identity).
 
 ## 7. How to run what exists
 ```sh
-python3 -m unittest discover -s tests          # full suite (366 tests, must stay green)
+python3 -m unittest discover -s tests          # full suite (443 tests, must stay green)
 python3 -m unittest tests.test_gist -v         # the GIST integer core (slice 2) + G1 gate
 ```
 The suite is the contract: any rework must keep it green (or change a test with a stated reason).

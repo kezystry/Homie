@@ -5,7 +5,7 @@ the **what & why**; this file is the **how it's going**. Updated every time a mi
 lands or a decision is taken.*
 
 - **Branch:** `claude/homie-overview-bo4l8v`
-- **Tests:** 390 passing (`python3 -m unittest discover -s tests`) — green on every push
+- **Tests:** 443 passing (`python3 -m unittest discover -s tests`) — green on every push
 - **Last updated:** 2026-06-27, after **Phase A — the SpeechBudget muzzle** (one global cap on
   owner-facing speech, the anti-nag waist), following the master-vision brainstorm + its external
   audit. The audit's scope filter is now binding in [`docs/SCOPE.md`](SCOPE.md): build the **six-thing
