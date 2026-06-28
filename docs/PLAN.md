@@ -59,6 +59,13 @@ isn't burning CPU on compression. 1080p is plenty; aim it **on your own property
 **Power/network:** wired Ethernet for both desktop and (ideally) Pi; USB power for the
 Pi on a shelf now, PoE+ later when it becomes the ceiling sensor head.
 
+**Zigbee/Thread radio (to buy):** **SONOFF Zigbee/Thread PoE Dongle Max** (EFR32MG24 +
+ESP32, dual antenna). Network-attached (Ethernet/PoE/Wi-Fi/USB) so it mounts centrally,
+away from the PC's USB-3 interference, and gives Home Assistant its own Zigbee coordinator
+(ZHA / Zigbee2MQTT) — Zigbee *and* Thread/Matter for the future. Run it alongside the
+Dirigera hub (IKEA bulbs) or migrate devices onto it for fully HA-native control.
+→ https://www.amazon.de/SONOFF-unterst%C3%BCtzt-USB-Verbindungen-Zigbee-Gateway-Zigbee-Stick/dp/B0FMJH4DPN
+
 ---
 
 ## 3. Topology — where everything runs
