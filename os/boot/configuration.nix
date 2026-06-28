@@ -129,9 +129,9 @@
         # "HOMIE_DESKTOP_DISPLAY=:0"
         #
         # Let owner-typed system /commands (/update, /restart, /reboot, /rebuild, /rollback)
-        # actually RUN from chat. Off by default → they just reply with the command to paste.
-        # Needs the polkit rule below so the `homie` user may restart/reboot without a password.
-        # "HOMIE_SHELL_COMMANDS=1"
+        # actually RUN from chat (owner's choice). The polkit rule below covers restart/reboot;
+        # the security.sudo rule below covers /rebuild (nixos-rebuild needs root).
+        "HOMIE_SHELL_COMMANDS=1"
       ];
       User = "homie";
       Group = "users";
@@ -189,9 +189,9 @@
     };
   };
 
-  # Let owner-typed /restart, /reboot, /rebuild work from chat (only matters with
-  # HOMIE_SHELL_COMMANDS=1): allow the `homie` user to restart its own unit + reboot, no
-  # password. Narrow by action; everything else still needs the usual auth.
+  # Let owner-typed /restart, /reboot work from chat (only matters with HOMIE_SHELL_COMMANDS=1):
+  # allow the `homie` user to restart its own unit + reboot, no password. Narrow by action;
+  # everything else still needs the usual auth.
   security.polkit.extraConfig = ''
     polkit.addRule(function(action, subject) {
       if (subject.user == "homie" &&
@@ -202,6 +202,19 @@
       }
     });
   '';
+
+  # /rebuild (nixos-rebuild switch) must run as root — polkit can't grant that, so a NARROW
+  # NOPASSWD sudo rule lets the `homie` user run exactly nixos-rebuild and nothing else. Honest
+  # note: nixos-rebuild runs activation scripts as root, so this is effectively a root grant via
+  # that one command (owner opted in to executing /commands). Drop this block to keep /rebuild
+  # paste-only while leaving /restart, /reboot, /update, /rollback executable.
+  security.sudo.extraRules = [{
+    users = [ "homie" ];
+    commands = [{
+      command = "/run/current-system/sw/bin/nixos-rebuild";
+      options = [ "NOPASSWD" ];
+    }];
+  }];
 
   # ---------------------------------------------------------------------------
   # Networking & hardening: firewall on; SSH off by default (opt-in).

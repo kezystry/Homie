@@ -37,7 +37,10 @@ def _minutes_arg(args, default: float = 60.0) -> float:
 _SYSTEM = {
     "update":   ["python3", "{root}/scripts/update.py"],
     "restart":  ["systemctl", "restart", "homie"],
-    "rebuild":  ["nixos-rebuild", "switch"],
+    # nixos-rebuild must run as root; the homie user reaches it via a narrow NOPASSWD sudo rule
+    # (security.sudo.extraRules in configuration.nix). Without HOMIE_SHELL_COMMANDS=1 this is
+    # still just pasted, never run.
+    "rebuild":  ["sudo", "nixos-rebuild", "switch"],
     "reboot":   ["systemctl", "reboot"],
     "rollback": ["git", "-C", "{root}", "reset", "--hard", "HEAD@{1}"],
 }
