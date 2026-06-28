@@ -1,0 +1,49 @@
+# Desktop — Homie's hands on the main PC (media playback control, safe by allowlist).
+#
+# Control is a FIXED set of safe media verbs (the security ruling): each actuator maps to one
+# xdotool keystroke into the focused kiosk window. There is no general-exec or free-string
+# launch actuator here — those don't exist by construction (core/desktop.py).
+
+[tile]
+name = "desktop"
+summary = "See and control the main PC — Stremio/media playback (play/pause, skip, seek)."
+
+[subscribes]
+events = []          # acts via functions; auto-behaviors (e.g. dim on film-start) come later
+
+[provides]
+intents = ["pause", "play", "skip", "next episode"]
+
+[[provides.functions]]
+name = "play_pause"
+description = "Toggle play/pause of whatever is playing on the main PC (e.g. Stremio)."
+
+[[provides.functions]]
+name = "next_"
+description = "Skip to the next item (next episode / next track)."
+
+[[provides.functions]]
+name = "previous"
+description = "Go to the previous item."
+
+[[provides.functions]]
+name = "skip_forward"
+description = "Seek forward a little in what's playing."
+
+[[provides.functions]]
+name = "skip_back"
+description = "Seek backward a little in what's playing."
+
+[acts]
+actuators = [
+    "desktop.play_pause",
+    "desktop.next",
+    "desktop.prev",
+    "desktop.seek_fwd",
+    "desktop.seek_back",
+    "desktop.stop",
+]
+
+[permissions]
+reads = ["media"]
+network = "local"
