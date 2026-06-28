@@ -119,6 +119,12 @@
         # delivering it out-of-band (see the LoadCredential note below) over hard-coding.
         # "HOMIE_HOME_URL=ws://mini-pc.local:8123/api/websocket"
         # "HOMIE_HOME_TOKEN=<long-lived-access-token>"
+        #
+        # Desktop eyes + hands (the main PC / Stremio). Uncomment on the DESKTOP node to let
+        # Homie see the active app + what's playing (facts, never frames) and control playback
+        # (a fixed safe-verb allowlist via xdotool). Off by default. DISPLAY defaults to :0.
+        # "HOMIE_DESKTOP=1"
+        # "HOMIE_DESKTOP_DISPLAY=:0"
       ];
       User = "homie";
       Group = "users";
