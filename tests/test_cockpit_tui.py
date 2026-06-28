@@ -68,13 +68,16 @@ class SubmitTests(unittest.TestCase):
         self.assertEqual(len(spawned), 1)
         self.assertEqual(client.sent, [])  # a command is not chat
 
-    def test_unknown_command_reports_not_chat(self) -> None:
-        c, client, spawned = cockpit()
-        c.input = "/nope"
-        c._submit()
-        self.assertEqual(spawned, [])
-        self.assertEqual(client.sent, [])
-        self.assertTrue(any("nope" in line for line in c.chat))
+    def test_daemon_command_is_forwarded_not_launched(self) -> None:
+        # /update, /status, /know, /close … are Homie commands: forwarded to the daemon,
+        # never treated as an app to launch (the "unknown app update" trap).
+        for cmd in ("/update", "/status", "/close stremio", "/know kitchen"):
+            c, client, spawned = cockpit()
+            c.input = cmd
+            c._submit()
+            self.assertEqual(spawned, [])              # nothing launched
+            self.assertEqual(client.sent, [cmd])       # sent verbatim to Homie
+            self.assertTrue(any(f"you: {cmd}" in line for line in c.chat))
 
     def test_quit_stops_running(self) -> None:
         c, _, _ = cockpit()

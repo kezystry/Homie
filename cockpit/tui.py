@@ -11,10 +11,12 @@ Two ways to drive it (the owner asked for arrow-key traversal, no mouse):
   * Enter on a focused
     camera/app (empty input) -> activate it (full cam view / launch)
   * type + Enter          -> chat with the brain
-  * /stremio /steam /camera, /launch <label> -> launch that app
+  * /stremio /steam /camera, /launch <label> -> launch that app (cockpit-local)
   * /cam                  -> toggle the camera pane on/off
-  * /help                 -> list commands
   * /quit  (or Ctrl-C)    -> exit
+  * ANY OTHER /command    -> forwarded to Homie (/status /now /know /close /mute
+                             /private /model /update /restart /rebuild /reboot /rollback)
+  * /help                 -> cockpit keys + Homie's command list
 
 The camera pane stays hidden until a webcam device is present, then appears on
 its own; the crisp FULL view is mpv --vo=drm via the launcher. Heavy pixels never
@@ -183,7 +185,15 @@ class Cockpit:
             except Exception as ex:
                 self._add_chat(f"· (couldn't send: {ex})")
 
+    def _launch_labels(self) -> set:
+        """The app labels the launcher knows — these `/<label>` commands launch locally."""
+        return {a.label.lower() for a in self.launcher.apps()}
+
     def _command(self, cmd: str) -> None:
+        # The cockpit handles ONLY its own window/launcher commands; every other `/command`
+        # (/status, /now, /know, /close, /mute, /update, /restart, …) is a Homie command and is
+        # forwarded to the daemon — otherwise the cockpit would swallow them (the "unknown app"
+        # trap: an unforwarded /update was treated as "launch an app called update").
         parts = cmd.split()
         if not parts:
             return
@@ -191,16 +201,24 @@ class Cockpit:
         if name in ("quit", "q", "exit"):
             self._running = False
             return
-        if name == "help":
-            self._add_chat("· arrows move focus · Enter activates a pane · type to chat")
-            self._add_chat("· commands: /stremio /steam /camera, /launch <label>, /cam, /quit")
-            return
         if name == "cam":
             self._cam_enabled = not self._cam_enabled
             self._add_chat(f"· camera pane {'on' if self._cam_enabled else 'off'}")
             return
-        label = parts[1] if name == "launch" and len(parts) > 1 else name
-        self._do_launch(label)
+        if name == "launch" or name in self._launch_labels():
+            label = parts[1] if name == "launch" and len(parts) > 1 else name
+            self._do_launch(label)
+            return
+        if name == "help":
+            self._add_chat("· arrows move focus · Enter activates a pane · type to chat")
+            self._add_chat("· cockpit: /stremio /steam /camera · /launch <label> · /cam · /quit")
+            # fall through to also ask Homie for ITS command list (/status /know /update …)
+        # a Homie command (or /help) → forward it to the daemon
+        self._add_chat(f"you: /{cmd}")
+        try:
+            self.client.send_chat("/" + cmd)
+        except Exception as ex:
+            self._add_chat(f"· (couldn't send: {ex})")
 
     def _do_launch(self, label: str) -> None:
         try:
