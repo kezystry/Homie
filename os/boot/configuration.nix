@@ -125,6 +125,11 @@
         # (a fixed safe-verb allowlist via xdotool). Off by default. DISPLAY defaults to :0.
         # "HOMIE_DESKTOP=1"
         # "HOMIE_DESKTOP_DISPLAY=:0"
+        #
+        # Let owner-typed system /commands (/update, /restart, /reboot, /rebuild, /rollback)
+        # actually RUN from chat. Off by default → they just reply with the command to paste.
+        # Needs the polkit rule below so the `homie` user may restart/reboot without a password.
+        # "HOMIE_SHELL_COMMANDS=1"
       ];
       User = "homie";
       Group = "users";
@@ -177,6 +182,20 @@
       RandomizedDelaySec = "600";
     };
   };
+
+  # Let owner-typed /restart, /reboot, /rebuild work from chat (only matters with
+  # HOMIE_SHELL_COMMANDS=1): allow the `homie` user to restart its own unit + reboot, no
+  # password. Narrow by action; everything else still needs the usual auth.
+  security.polkit.extraConfig = ''
+    polkit.addRule(function(action, subject) {
+      if (subject.user == "homie" &&
+          (action.id == "org.freedesktop.systemd1.manage-units" ||
+           action.id == "org.freedesktop.login1.reboot" ||
+           action.id == "org.freedesktop.login1.reboot-multiple-sessions")) {
+        return polkit.Result.YES;
+      }
+    });
+  '';
 
   # ---------------------------------------------------------------------------
   # Networking & hardening: firewall on; SSH off by default (opt-in).

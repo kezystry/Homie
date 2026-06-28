@@ -43,6 +43,7 @@ from core.bus import Bus
 from core.canonical import ha_canonical
 from core.clock import Clock
 from core.cockpit_bridge import CockpitBridge
+from core.commands import SlashCommands
 from core.confirm_responder import ConfirmResponder
 from core.consent import Consent
 from core.friction_ledger import FrictionLedger
@@ -99,6 +100,9 @@ class DaemonConfig:
     ha_calendars: list[str] = field(default_factory=list)
     ha_todo_lists: list[str] = field(default_factory=list)
     ha_weather_entity: str | None = None
+    # Runner for owner-typed system /commands (/update, /restart, /reboot, …). None = reply with
+    # the command to paste (safe default); deploy injects a subprocess runner when HOMIE_SHELL_COMMANDS=1.
+    shell_runner: Callable[[list], str] | None = None
 
     @property
     def has_cortex(self) -> bool:
@@ -110,7 +114,7 @@ class Daemon:
     order (Remember LAST); `stop()` tears it down; `run_forever()` parks until the
     service is stopped. Tests inspect `.bus`, `.remember`, `.sup`, etc. directly."""
 
-    def __init__(self, *, bus, remember, consent, confirm, ledger, undo, sup, act, reconciler, reason,
+    def __init__(self, *, bus, remember, consent, confirm, ledger, undo, commands, sup, act, reconciler, reason,
                  voice, anchor, cockpit, mesh, clock, home, perception, config: DaemonConfig,
                  ha_agenda=None, groundskeeper=None, gist=None, watch=None) -> None:
         self.bus = bus
@@ -119,6 +123,7 @@ class Daemon:
         self.confirm = confirm        # turns a chat yes/no into a confirm.response (Consent answerable)
         self.ledger = ledger          # the undo timeline: every confirmed action as a reversible row
         self.undo = undo              # one-tap reversal: re-drives a row's prior value (guarded ones ask)
+        self.commands = commands      # owner-typed /commands in chat
         self.sup = sup
         self.act = act
         self.reconciler = reconciler
@@ -153,6 +158,7 @@ class Daemon:
         if self.watch is not None:
             await self.watch.start()          # record the full watch history (titles + all)
         await self.undo.start()               # one-tap reversal: re-drive a row's prior value
+        await self.commands.start()           # owner-typed /commands in chat
         await self.voice.start()              # the muzzle: live BEFORE any tile can speak
         self.reconciler.attach(self.home)     # human state-changes -> friction
         # The home is a managed seam: a real adapter (HA WebSocket) runs a background
@@ -251,6 +257,7 @@ class Daemon:
         await self.voice.stop()
         await self.confirm.stop()
         await self.undo.stop()
+        await self.commands.stop()
         if self.gist is not None:
             await self.gist.stop()
         if self.watch is not None:
@@ -301,6 +308,8 @@ def build_daemon(home, perception: Perception | None, *, config: DaemonConfig | 
     # path (it mints its own ("undo", actuator) handle — never a forged payload). Guarded
     # domains (locks/garage/alarm) route through Consent first; everything else is instant.
     undo = Undo(bus, ledger, registry, consent=consent)
+    # Owner-typed /commands in chat (/status, /now, /recommend, /mute, /private, /update, /reboot…).
+    slash_commands = SlashCommands(bus, state=config.state, runner=config.shell_runner, root=str(ROOT))
     sup = Supervisor(tiles_dir, bus, remember=remember, consent=consent,
                      state_root=config.state, registry=registry)
 
@@ -359,7 +368,7 @@ def build_daemon(home, perception: Perception | None, *, config: DaemonConfig | 
             tz=os.environ.get("HOMIE_TZ"),
         )
 
-    return Daemon(bus=bus, remember=remember, consent=consent, confirm=confirm, ledger=ledger, undo=undo, sup=sup, act=act,
+    return Daemon(bus=bus, remember=remember, consent=consent, confirm=confirm, ledger=ledger, undo=undo, commands=slash_commands, sup=sup, act=act,
                   reconciler=reconciler, reason=reason, voice=voice, anchor=anchor,
                   cockpit=cockpit, mesh=mesh, clock=clock, home=home, perception=perception, ha_agenda=ha_agenda,
                   groundskeeper=groundskeeper, gist=gist, watch=watch, config=config)

@@ -86,6 +86,21 @@ def _act_map() -> ActMap | None:
         return None
 
 
+def _shell_runner():
+    """Let owner-typed system /commands (/update, /restart, /reboot…) actually run — but ONLY
+    when HOMIE_SHELL_COMMANDS=1 (needs a polkit rule so the homie user may restart/reboot).
+    Off by default → those commands just reply with the command to paste."""
+    if os.environ.get("HOMIE_SHELL_COMMANDS") != "1":
+        return None
+    import subprocess
+
+    def run(argv: list) -> str:
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=600)
+        return (r.stdout or r.stderr or "").strip()[:2000]
+
+    return run
+
+
 async def main() -> None:
     STATE.mkdir(parents=True, exist_ok=True)
     from deploy.home import home_from_env  # the injected HomeClient (LoggingHome until HA lands)
@@ -97,6 +112,7 @@ async def main() -> None:
         cockpit_sock=os.environ.get("HOMIE_COCKPIT_SOCK", str(STATE / "cockpit.sock")),
         compact_threshold=int(os.environ.get("HOMIE_COMPACT_THRESHOLD", "5000")),
         compact_interval=float(os.environ.get("HOMIE_COMPACT_INTERVAL", "3600")),
+        shell_runner=_shell_runner(),
     )
     # Perception is one more injected seam: a synthetic scenario (HOMIE_FAKE_PERCEPTION)
     # today, the live MQTT/mesh adapter later — no rewiring, just a different source.
