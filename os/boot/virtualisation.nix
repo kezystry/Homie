@@ -25,4 +25,9 @@
   # Let the owner run docker without sudo. extraGroups is a list option, so this MERGES
   # with the ["video"] set in configuration.nix → homie ends up in both groups.
   users.users.homie.extraGroups = [ "docker" ];
+
+  # Open Home Assistant's web UI (port 8123) to the LAN. NixOS's firewall is default-deny,
+  # so without this only the box itself (loopback) can reach HA — the phone/laptop can't.
+  # This is a LOCAL port on your own network; nothing is exposed to the internet.
+  networking.firewall.allowedTCPPorts = [ 8123 ];
 }
