@@ -46,8 +46,8 @@ def _make_ctx(manifest) -> TileContext:
     async def act(actuator: str, value, priority: str = "automation") -> None:
         _write({"type": "act", "actuator": actuator, "value": value, "priority": priority})
 
-    async def speak(text: str) -> None:
-        _write({"type": "speak", "text": text})
+    async def speak(text: str, *, kind: str = "proactive") -> None:
+        _write({"type": "speak", "text": text, "kind": kind})
 
     async def recall(topic, zone, when):  # behavioral recall isn't bridged to subprocess tiles
         raise RuntimeError("recall is not available to out-of-process tiles")

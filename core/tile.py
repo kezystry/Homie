@@ -150,7 +150,7 @@ class Context(Protocol):
 
     async def act(self, actuator: str, value) -> None: ...
     async def emit(self, event: Event) -> None: ...
-    async def speak(self, text: str) -> None: ...
+    async def speak(self, text: str, *, kind: str = "proactive") -> None: ...  # governed by the VoiceGate
     async def recall(self, topic: str, zone: str | None, when: float): ...  # Behavioral Analysis
     async def confirm(self, prompt: str, *, risk: str = "medium") -> bool: ...  # ask for a yes/no
     def log(self, level: str, msg: str) -> None: ...
@@ -220,8 +220,8 @@ class TileContext:
     async def emit(self, event: Event) -> None:
         await self._emit(event)
 
-    async def speak(self, text: str) -> None:
-        await self._speak(text)
+    async def speak(self, text: str, *, kind: str = "proactive") -> None:
+        await self._speak(text, kind=kind)
 
     async def recall(self, topic: str, zone: str | None, when: float):
         """Query the pattern of life (Behavioral Analysis) — what is normal here?"""
@@ -831,8 +831,11 @@ class Supervisor:
                 payload["cap"] = self._caps.mint(name, actuator, level)
             await self.bus.publish(Event("actuator.requested", ref.at, payload, source=f"tile:{name}"))
 
-        async def speak(text: str) -> None:
-            await self.bus.publish(Event("interface.say", time.time(), {"text": text}, source=f"tile:{name}"))
+        async def speak(text: str, *, kind: str = "proactive") -> None:
+            # Emit a fact-to-say; the VoiceGate (core/voice.py) decides whether the owner
+            # actually hears it. `kind="safety"`/`"alert"` bypasses the speech budget.
+            await self.bus.publish(Event("interface.say", time.time(),
+                                         {"text": text, "kind": kind}, source=f"tile:{name}"))
 
         def log_fn(level: str, msg: str) -> None:
             log.log(getattr(logging, level.upper(), logging.INFO), msg)

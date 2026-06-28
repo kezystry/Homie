@@ -49,6 +49,7 @@ from core.reconcile import StateReconciler
 from core.remember import Remember
 from core.ritual import consolidate
 from core.tile import Supervisor
+from core.voice import VoiceGate
 
 log = logging.getLogger("homie.daemon")
 
@@ -94,7 +95,7 @@ class Daemon:
     service is stopped. Tests inspect `.bus`, `.remember`, `.sup`, etc. directly."""
 
     def __init__(self, *, bus, remember, consent, sup, act, reconciler, reason,
-                 anchor, cockpit, mesh, clock, home, perception, config: DaemonConfig) -> None:
+                 voice, anchor, cockpit, mesh, clock, home, perception, config: DaemonConfig) -> None:
         self.bus = bus
         self.remember = remember
         self.consent = consent
@@ -102,6 +103,7 @@ class Daemon:
         self.act = act
         self.reconciler = reconciler
         self.reason = reason
+        self.voice = voice            # the speech governor (always wired): the one muzzle
         self.clock = clock
         self.anchor = anchor          # None when a real cortex owns chat
         self.cockpit = cockpit        # None when no socket configured
@@ -120,6 +122,7 @@ class Daemon:
         # --- the one correct wiring order ------------------------------------- #
         await self.consent.start()
         await self.act.start()
+        await self.voice.start()              # the muzzle: live BEFORE any tile can speak
         self.reconciler.attach(self.home)     # human state-changes -> friction
         # The home is a managed seam: a real adapter (HA WebSocket) runs a background
         # connection loop, started AFTER its handler is attached so no echo is missed.
@@ -193,6 +196,7 @@ class Daemon:
         self._tasks = []
         await self.clock.stop()
         await self.reason.stop()
+        await self.voice.stop()
         if self.anchor is not None:
             await self.anchor.stop()
         if self.cockpit is not None:
@@ -246,6 +250,13 @@ def build_daemon(home, perception: Perception | None, *, config: DaemonConfig | 
     # null client makes the proposer a tested no-op. The anchor chat floor is wired
     # ONLY when there is no cortex, so chat is answered exactly once.
     reason = Reason(bus, config.llm or NullLLMClient(), sup, remember)
+
+    # The Voice waist: the ONE governor on owner-facing speech. Tiles and the cortex emit
+    # interface.say; this gate decides what the owner actually hears (interface.spoken) and
+    # what defers to the morning recap (speech.deferred). Wired unconditionally — there is
+    # no second path that can speak to the owner ungoverned (Phase A: muzzle before mouths).
+    voice = VoiceGate(bus)
+
     anchor = None if config.has_cortex else AnchorVoice(bus, remember, now=config.now)
 
     cockpit = CockpitBridge(bus, path=config.cockpit_sock) if config.cockpit_sock else None
@@ -253,5 +264,6 @@ def build_daemon(home, perception: Perception | None, *, config: DaemonConfig | 
     clock = Clock(bus, now=config.now, tick_seconds=config.tick_seconds)
 
     return Daemon(bus=bus, remember=remember, consent=consent, sup=sup, act=act,
-                  reconciler=reconciler, reason=reason, anchor=anchor, cockpit=cockpit,
-                  mesh=mesh, clock=clock, home=home, perception=perception, config=config)
+                  reconciler=reconciler, reason=reason, voice=voice, anchor=anchor,
+                  cockpit=cockpit, mesh=mesh, clock=clock, home=home, perception=perception,
+                  config=config)
