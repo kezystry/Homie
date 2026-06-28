@@ -28,18 +28,21 @@
   protocol), `docs/SECURITY.md` (privacy/identity), `docs/ARCHITECTURE.md`, `docs/CAMERA.md`
   (the camera foundation: live/NVR/privacy contract), `os/` (dual-boot NixOS + `INSTALL.md`).
 - **Code:** `core/` (`bus`, `remember` (now with honest `prob`/`firm` beliefs), `tile`
-  runtime + channels, `clock`, `mesh`, `act` + `capability`, `reason` (cortex) + `serving`,
+  runtime + channels, `clock`, `mesh`, `schema` (the M7 positive-schema privacy guard —
+  perception + mesh refuse anything not declared emittable; broad surfaces use `ImageryFence`),
+  `act` + `capability`, `reason` (cortex; now recalls firm GIST lines into build_context) + `serving`,
   `reconcile`, `consent`, `confirm_responder`, `friction_ledger` + `undo` (one-tap reversal),
   `groundskeeper` (silent storage hygiene), `watchdog` (sd_notify self-heal), `selfupdate`
   (health-gated nightly upgrade + authority-freeze), `desktop` (safe PC control), `watchlog`
   (the full watch history + recommendations), `commands` (owner-typed /commands), `models`
   (switchable general/dev brains), `canonical`, `ritual` + `overnight` (the nightly self-renewal:
   live abort gates so it never recycles mid-film + ONE honest morning word), `gist` + `gist_store`
-  (the nightly-distilled memory: earned persistence, runs in the ritual); the anti-nag waist `voice` +
+  (the nightly-distilled memory: earned persistence, runs in the ritual; `gist.recall` is the
+  Dream Journal — a pure lexical query surfaced by `/know` and injected into the cortex); the anti-nag waist `voice` +
   `speech_budget`; the morning surface `journal` + `recap` + `agenda` + `briefing` + `route`;
   the HA hand `ha` + `ws` + `ha_discovery`; the eyes `camera` (registry + zone-allowlist +
   go2rtc/Frigate config-gen)), `perception/` (`frigate_adapter`, `desktop_adapter` — frames die
-  at the edge), `tiles/` (`personal`, `security`, `lighting`, `desktop`), `tests/` (674 passing),
+  at the edge), `tiles/` (`personal`, `security`, `lighting`, `desktop`), `tests/` (697 passing),
   `scripts/` (`run.py` daemon, `ha_setup.py`, `ha_light.py`, `camera_setup.py`, `update.py`,
   `spine_demo.py`, `status.py`).
 - **Importable notes:** `obsidian/` is a cross-linked Obsidian vault mirroring the docs.

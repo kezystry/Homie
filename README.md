@@ -6,7 +6,7 @@
 
 No cloud. No accounts. No telemetry. Nothing ever leaves your network.
 
-[![tests](https://img.shields.io/badge/tests-674%20passing-brightgreen)](tests/)
+[![tests](https://img.shields.io/badge/tests-697%20passing-brightgreen)](tests/)
 [![python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![dependencies](https://img.shields.io/badge/runtime%20deps-stdlib%20only-success)](#engineering-discipline)
 [![privacy](https://img.shields.io/badge/cloud-none-critical)](#security--privacy)
@@ -132,6 +132,7 @@ flowchart LR
 | **Tile runtime** | ✅ | In-process **and** subprocess isolation, supervision, self-healing, hot-swappable tiles. |
 | **Friction learning** | ✅ | Reversals become lessons; home-echo canonicalization stops Homie mis-reading its own actions. |
 | **Capability-gated actuation** | ✅ | A tile drives only what its manifest declares, at its declared priority — a forged command is refused, even over the subprocess wire. |
+| **Positive-schema privacy guard** | ✅ | Perception and the mesh emit only payloads *declared* emittable; a faceprint, embedding, or frame has no declared home, so it's refused structurally at any nesting depth or key name — not by a denylist. Widening the schema freezes for the owner. |
 | **Wake governance** | ✅ | An event-clocked surprise budget wakes the GPU brain only on genuinely novel moments and reports the real asleep-fraction as a number; safety wakes are exempt. |
 | **Home Assistant adapter** | ✅ | Drives real DIRIGERA/Tradfri lights and hears human switch-flips, over a stdlib WebSocket with a liveness heartbeat. |
 | **Self-pacing voice** | ✅ | One global governor on unprompted speech that *learns* how chatty to be — muting it shrinks its allowance, a tolerated day grows it; safety always heard, overflow defers. No hand-set cap. |
@@ -140,13 +141,14 @@ flowchart LR
 | **One-tap undo** | ✅ | Any confirmed action is a reversible row; one tap re-drives the prior value through the same capability gate. Guarded domains (locks, alarm) confirm first. |
 | **Automatic lighting** | ✅ | Presence- and dusk-driven room lighting that learns from reversals (offer-once, then act), dims for a film, and yields to any safety/security decision. |
 | **Distilled memory (GIST)** | ✅ | A deterministic, integer-exact nightly distill of the home's rhythm — earned persistence (proven routines linger, flukes fade), byte-exact, off-limits zones unrepresentable. |
+| **Dream Journal (recall)** | ✅ | At decision time the cortex recalls the firm, on-situation lines from that distilled memory — a deterministic lexical query, no embedder and no vector store, so it runs on the always-on node and informs a wake without a GPU. `/know` shows the same page. |
 | **Nightly self-renewal** | ✅ | Consolidate · self-heal · health-gated self-upgrade with auto-rollback — deferred while a film plays or the home is active; one honest morning word. |
 | **Desktop eyes + hands** | ✅ | Sees the active app + what's playing on the main PC (facts, never frames), controls playback and closes windows via a fixed safe-verb allowlist, and builds a private watch-history + recommendations. |
-| **Owner /commands** | ✅ | Typed in chat: `/status` `/now` `/recommend` `/mute` `/private` `/close` `/model` and self-executing `/update` `/restart` `/rebuild` `/reboot` `/rollback`. |
+| **Owner /commands** | ✅ | Typed in chat: `/status` `/now` `/recommend` `/know` `/mute` `/private` `/close` `/model` and self-executing `/update` `/restart` `/rebuild` `/reboot` `/rollback`. |
 | **Serving discipline** | ✅ | Local-model latency SLO, warm/cold GPU policy, JSON-schema-constrained tool decoding, and a tool-call rejection-rate signal (the GPU brain itself is not yet stood up). |
 | Guardian (intrusion/hazard) · camera human-reading · phone back-channel | 🅿️ | On the [plan](docs/PLAN-FORWARD.md) — sequenced, or waiting on the perception accelerator. |
 
-**674 stdlib tests pass** — and the tested graph *is* the shipped graph.
+**697 stdlib tests pass** — and the tested graph *is* the shipped graph.
 
 ## Quickstart
 
@@ -155,7 +157,7 @@ Python 3.11+, **standard library only** — no dependencies to run the spine.
 ```sh
 git clone https://github.com/kezystry/homie.git && cd homie
 
-python3 -m unittest discover -s tests   # the full suite (674 tests)
+python3 -m unittest discover -s tests   # the full suite (697 tests)
 python3 scripts/spine_demo.py           # the five-part loop, end to end on one node
 python3 scripts/status.py --text        # a live status board (great over SSH)
 python3 scripts/run.py                  # the daemon (bus + Remember + Supervisor + tiles)
@@ -189,7 +191,7 @@ rollback-able generation, and the box updates itself via a pull → health-check
 core/        the spine: bus · remember · reason · act · reconcile · tile runtime ·
              capability · wake_ledger · serving · ha · ws · canonical · ritual · mesh …
 tiles/       living tiles — personal · security · lighting · desktop — + _template for new ones
-tests/       stdlib unittest suite (68 files, 674 tests)
+tests/       stdlib unittest suite (71 files, 697 tests)
 scripts/     run.py (daemon) · spine_demo.py (demo) · status.py (live board) · update.py
 os/          dual-boot hardened NixOS profile + INSTALL.md
 deploy/      runtime config — act_map.toml · llm.py · home.py · MODEL.md (model card)

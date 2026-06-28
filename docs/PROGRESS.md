@@ -5,7 +5,7 @@ the **what & why**; this file is the **how it's going**. Updated every time a mi
 lands or a decision is taken.*
 
 - **Branch:** `claude/homie-overview-bo4l8v`
-- **Tests:** 674 passing (`python3 -m unittest discover -s tests`) — green on every push
+- **Tests:** 697 passing (`python3 -m unittest discover -s tests`) — green on every push
 - **Last updated:** 2026-06-28, after the **Camera foundation** (registry + positive zone-allowlist +
   go2rtc/Frigate config-gen + the edge adapter where frames die — see [`docs/CAMERA.md`](CAMERA.md)) and
   the **external-audit safety pass** (FIFO confirm queue + exact-match yes/no + the Coherence test that
@@ -65,7 +65,17 @@ DESK ◑ building  Main-PC eyes+hands (3-pro council) — DesktopAdapter (X11 fa
                  full WatchLog + recommendation engine (titles + taste + predictions) ✅ · desktop
                  tile + safe capability-gated control (fixed verb allowlist, no exec) ✅. Next:
                  deploy wiring + auto-behaviors (dim on film-start) + the recommend page surface.
-M7   ⏳ planned    Positive-schema privacy guard + Dream Journal (retrieval)
+M7   ✅ shipped    Positive-schema privacy guard + Dream Journal (retrieval) — (3-pro council:
+                 security/privacy, ML-retrieval, embedded-determinism). core/schema.py is the
+                 single source of truth: perception ingest + the mesh now refuse anything not
+                 DECLARED emittable (recursive, bounded, fail-closed) so a faceprint/embedding
+                 has no home at any depth or key name; the cockpit keeps a recursive ImageryFence
+                 for its broad owner-facing surface; a pinned SCHEMA_FINGERPRINT + the authority-
+                 hint on core/schema.py freeze any widening (Law 8a). The Dream Journal is a pure
+                 lexical gist.recall() over the schemas that already exist (integer facet-overlap,
+                 k=3 firm lines, no embedder/vector-DB) injected into the cortex's build_context;
+                 /know surfaces it. Acceptance tests green: nested-faceprint rejected, retrieval
+                 changes a decision. (Landed pure→wired in separate commits for bisectability.)
 M8   ⏳ planned    Friction Ledger pane + one-key undo
 M9   ⏳ planned    Deploy posture + confinement
 M10  ⏳ planned    Visible posture + dream note + trust tiers

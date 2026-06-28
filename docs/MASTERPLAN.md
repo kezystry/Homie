@@ -357,10 +357,28 @@ consume summaries.
 
 ---
 
-### M7 — Positive-schema privacy guard + the Dream Journal (retrieval) · [weeks]
+### M7 — Positive-schema privacy guard + the Dream Journal (retrieval) · ✅ SHIPPED
 
 **Goal.** Two things that must land together because the Journal's embeddings are *exactly*
 the C6 leak vector. First make the privacy guard true; then give Homie recall.
+
+**Shipped (3-pro council: security/privacy, ML-retrieval, embedded-determinism).**
+- **Guard:** `core/schema.py` is the single positive source of truth; `assert_emittable` and
+  `PrivacyGuard.permits` both delegate to `schema.validate`. Recursive, bounded (depth/node/
+  list caps), fail-closed — a faceprint/embedding is refused structurally at any depth/key.
+  The cockpit's broad owner-facing surface uses a recursive `ImageryFence` (an improvement over
+  the old non-recursive denylist) rather than the narrow schema. A pinned `SCHEMA_FINGERPRINT`
+  plus `core/schema.py` on the self-update authority-hint list freeze any widening (Law 8a).
+- **Journal — deviation from the sketch, and why.** The plan said "a small local embedder on
+  the 3060." We shipped **deterministic lexical recall** instead: `gist.recall()` is a pure
+  integer facet-overlap query over the GIST schemas that already exist (their keys *are* a
+  structured index), k=3 firm lines, injected into `build_context`. No embedder, no vector DB,
+  no second store. Rationale the council was unanimous on: recall fires at `decide()` on the
+  **always-on node (no GPU)** and must be **deterministic + stdlib-only**; an embedder would
+  drag float matmul and model drift into the one subsystem built to never have them, to rank a
+  ≤256-line corpus where lexical recall is already optimal. The privacy clause is then *vacuous*
+  (no embedding exists), and a recalled line is exactly the `render_brief` text the owner sees.
+  The `/know` command surfaces the same brief as the Dream Journal page.
 
 **Tasks (guard first — it is a prerequisite).**
 - Replace **both** guards (`core/mesh.py:PrivacyGuard.permits`,
@@ -797,7 +815,7 @@ M3  [days]       Wake telemetry → calibrate → enforced budget      → C8; t
 M4  [days]       Hour-shaped lesson, spoken back                   → first goosebumps
 M5  [weeks]      Capability-gated act path                         → C2, C14
 M6  [weeks]      8B-on-3060 serving discipline                     → cortex SLO
-M7  [weeks]      Positive-schema guard + Dream Journal (retrieval) → C6; learning Stage B
+M7  ✅ shipped    Positive-schema guard + Dream Journal (recall)    → C6; learning Stage B
 M8  [weeks]      Friction Ledger pane + one-key undo               → felt control; dataset feed
 M9  [days–wks]   Deploy posture + confinement                      → C7, C9
 M10 [weeks]      Visible posture + dream note + trust tiers        → C13 artifact; the payoff
