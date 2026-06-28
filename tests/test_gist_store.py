@@ -53,6 +53,16 @@ class MapperTests(unittest.TestCase):
         self.assertIsNone(event_tokens(Event("chat.message", 0.0, {"text": "hi"})))
         self.assertIsNone(event_tokens(Event("presence.arrived", 0.0, {})))   # no zone
 
+    def test_media_maps_to_shape_not_title(self) -> None:
+        # the media council's hard rule: learn app + coarse kind; the TITLE never becomes a token
+        toks = event_tokens(Event("media.activity", 0.0,
+                                  {"app": "stremio", "kind": "film", "title": "The Matrix"}))
+        self.assertEqual(toks, ("media", "stremio", "film"))
+        self.assertNotIn("The Matrix", toks)                  # title must never reach the GIST
+        # an unknown/coarse-less event still learns the session shape
+        self.assertEqual(event_tokens(Event("media.activity", 0.0, {"app": "stremio"})),
+                         ("media", "stremio"))
+
 
 class CollectorTests(unittest.IsolatedAsyncioTestCase):
     async def test_buffers_and_folds_a_day(self) -> None:

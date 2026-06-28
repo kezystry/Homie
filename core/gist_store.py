@@ -31,6 +31,7 @@ log = logging.getLogger("homie.gist")
 # ignored — the GIST is a memory of life-shape, not a firehose.
 _PRESENCE = {"presence.arrived", "occupancy.changed"}
 _ACTUATOR = "actuator.done"
+_MEDIA = "media.activity"   # the desktop media adapter's normalized event (app/kind/state only)
 
 
 def event_tokens(event: Event) -> tuple[str, ...] | None:
@@ -46,6 +47,19 @@ def event_tokens(event: Event) -> tuple[str, ...] | None:
         # 'light.living_room' → ('light', 'living_room'); the room is the OFF-fenceable token
         domain, _, rest = str(actuator).partition(".")
         return (domain, rest) if rest else (domain,)
+    if event.topic == _MEDIA:
+        # The media council's rule: learn the SHAPE of his media life (app + coarse kind), so
+        # "weekend evenings → a film" falls out — but NEVER the title. A title is sensitive like
+        # a self-photo (Charter 23a); it lives live-only/pin-to-keep elsewhere, never in the
+        # durable GIST. We read ONLY app/kind here, so a title can't leak into the record.
+        app = p.get("app")
+        if not app:
+            return None
+        toks = ["media", str(app)]
+        kind = p.get("kind")
+        if kind in ("film", "series"):
+            toks.append(str(kind))
+        return tuple(toks)
     return None
 
 

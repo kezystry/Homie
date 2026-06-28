@@ -54,6 +54,7 @@ from core.reconcile import StateReconciler
 from core.remember import Remember
 from core.gist_store import GistCollector, GistStore
 from core.ritual import consolidate
+from core.watchlog import WatchLog, WatchTracker
 from core.tile import Supervisor
 from core.undo import Undo
 from core.voice import VoiceGate
@@ -110,7 +111,7 @@ class Daemon:
 
     def __init__(self, *, bus, remember, consent, confirm, ledger, undo, sup, act, reconciler, reason,
                  voice, anchor, cockpit, mesh, clock, home, perception, config: DaemonConfig,
-                 ha_agenda=None, groundskeeper=None, gist=None) -> None:
+                 ha_agenda=None, groundskeeper=None, gist=None, watch=None) -> None:
         self.bus = bus
         self.remember = remember
         self.consent = consent
@@ -131,6 +132,7 @@ class Daemon:
         self.ha_agenda = ha_agenda    # live HA calendar/to-do/weather feed (None if not configured)
         self.groundskeeper = groundskeeper  # storage limb (None for in-memory test graphs)
         self.gist = gist              # distilled-memory collector (None for in-memory test graphs)
+        self.watch = watch            # watch-history tracker (None for in-memory test graphs)
         self.config = config
         self._tasks: list[asyncio.Task] = []
         self.started = False
@@ -147,6 +149,8 @@ class Daemon:
         await self.ledger.start()             # record actions for the undo timeline
         if self.gist is not None:
             await self.gist.start()           # buffer the day's life-shape for the nightly distill
+        if self.watch is not None:
+            await self.watch.start()          # record the full watch history (titles + all)
         await self.undo.start()               # one-tap reversal: re-drive a row's prior value
         await self.voice.start()              # the muzzle: live BEFORE any tile can speak
         self.reconciler.attach(self.home)     # human state-changes -> friction
@@ -236,6 +240,8 @@ class Daemon:
         await self.undo.stop()
         if self.gist is not None:
             await self.gist.stop()
+        if self.watch is not None:
+            await self.watch.stop()
         await self.ledger.stop()
         if self.anchor is not None:
             await self.anchor.stop()
@@ -319,6 +325,13 @@ def build_daemon(home, perception: Perception | None, *, config: DaemonConfig | 
                           tz=os.environ.get("HOMIE_TZ"))
             if config.state is not None else None)
 
+    # The watch history (owner's call: store everything — titles + all): the full, wipeable
+    # record of what he watches, powering the recommendation page. Separate from the title-free
+    # GIST. Records media.activity sessions; honors the one-tap screen-private pause.
+    watch = (WatchTracker(bus, WatchLog(Path(config.state) / "watch.json"),
+                          tz=os.environ.get("HOMIE_TZ"))
+             if config.state is not None else None)
+
     # The live morning feed: real HA calendar/to-do/weather → agenda.external, folded by the
     # Personal tile into the briefing. Wired ONLY when the home can answer queries (a real HA
     # client exposes `request`) and at least one entity is configured — otherwise the briefing
@@ -336,4 +349,4 @@ def build_daemon(home, perception: Perception | None, *, config: DaemonConfig | 
     return Daemon(bus=bus, remember=remember, consent=consent, confirm=confirm, ledger=ledger, undo=undo, sup=sup, act=act,
                   reconciler=reconciler, reason=reason, voice=voice, anchor=anchor,
                   cockpit=cockpit, mesh=mesh, clock=clock, home=home, perception=perception, ha_agenda=ha_agenda,
-                  groundskeeper=groundskeeper, gist=gist, config=config)
+                  groundskeeper=groundskeeper, gist=gist, watch=watch, config=config)
