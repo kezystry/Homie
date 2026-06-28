@@ -30,8 +30,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Awaitable, Callable, Protocol
 
@@ -45,6 +46,7 @@ from core.cockpit_bridge import CockpitBridge
 from core.confirm_responder import ConfirmResponder
 from core.consent import Consent
 from core.friction_ledger import FrictionLedger
+from core.ha_agenda import HAAgendaSource, HAWsQuery
 from core.mesh import Link, MeshBridge
 from core.reason import LLMClient, NullLLMClient, Reason
 from core.reconcile import StateReconciler
@@ -87,6 +89,12 @@ class DaemonConfig:
     node_id: str = "homie"
     housekeep: bool = True             # run the periodic compaction/ritual task
     now: Callable[[], float] = time.time
+    # The live morning-briefing feed: which HA calendar/to-do/weather entities to read. Wired
+    # only when the home is a real HA client (has `request`) AND at least one is configured;
+    # empty => no external source (the briefing renders from learned routines + the list alone).
+    ha_calendars: list[str] = field(default_factory=list)
+    ha_todo_lists: list[str] = field(default_factory=list)
+    ha_weather_entity: str | None = None
 
     @property
     def has_cortex(self) -> bool:
@@ -99,7 +107,8 @@ class Daemon:
     service is stopped. Tests inspect `.bus`, `.remember`, `.sup`, etc. directly."""
 
     def __init__(self, *, bus, remember, consent, confirm, ledger, undo, sup, act, reconciler, reason,
-                 voice, anchor, cockpit, mesh, clock, home, perception, config: DaemonConfig) -> None:
+                 voice, anchor, cockpit, mesh, clock, home, perception, config: DaemonConfig,
+                 ha_agenda=None) -> None:
         self.bus = bus
         self.remember = remember
         self.consent = consent
@@ -117,6 +126,7 @@ class Daemon:
         self.mesh = mesh              # None = loopback (single node)
         self.home = home
         self.perception = perception
+        self.ha_agenda = ha_agenda    # live HA calendar/to-do/weather feed (None if not configured)
         self.config = config
         self._tasks: list[asyncio.Task] = []
         self.started = False
@@ -142,6 +152,8 @@ class Daemon:
             await home_start()
         await self.sup.start_all()            # tiles subscribe (evaluators)
         await self.clock.start()              # the heartbeat: tick.* + the timer seam
+        if self.ha_agenda is not None:
+            await self.ha_agenda.start()      # live calendar/weather feed → agenda.external
         await self.reason.start()             # the proposer (real or null)
         if self.anchor is not None:
             await self.anchor.start()         # anchor chat floor (no-cortex only)
@@ -204,6 +216,8 @@ class Daemon:
         if self._tasks:
             await asyncio.gather(*self._tasks, return_exceptions=True)
         self._tasks = []
+        if self.ha_agenda is not None:
+            await self.ha_agenda.stop()
         await self.clock.stop()
         await self.reason.stop()
         await self.voice.stop()
@@ -282,7 +296,21 @@ def build_daemon(home, perception: Perception | None, *, config: DaemonConfig | 
     mesh = MeshBridge(config.node_id, bus, config.mesh_link) if config.mesh_link is not None else None
     clock = Clock(bus, now=config.now, tick_seconds=config.tick_seconds, morning_hour=config.morning_hour)
 
+    # The live morning feed: real HA calendar/to-do/weather → agenda.external, folded by the
+    # Personal tile into the briefing. Wired ONLY when the home can answer queries (a real HA
+    # client exposes `request`) and at least one entity is configured — otherwise the briefing
+    # renders from learned routines + the owner's list alone, exactly as before.
+    ha_agenda = None
+    if (config.ha_calendars or config.ha_todo_lists or config.ha_weather_entity) and \
+            callable(getattr(home, "request", None)):
+        ha_agenda = HAAgendaSource(
+            bus,
+            HAWsQuery(home, calendars=config.ha_calendars, todo_lists=config.ha_todo_lists,
+                      weather_entity=config.ha_weather_entity),
+            tz=os.environ.get("HOMIE_TZ"),
+        )
+
     return Daemon(bus=bus, remember=remember, consent=consent, confirm=confirm, ledger=ledger, undo=undo, sup=sup, act=act,
                   reconciler=reconciler, reason=reason, voice=voice, anchor=anchor,
-                  cockpit=cockpit, mesh=mesh, clock=clock, home=home, perception=perception,
+                  cockpit=cockpit, mesh=mesh, clock=clock, home=home, perception=perception, ha_agenda=ha_agenda,
                   config=config)

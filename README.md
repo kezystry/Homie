@@ -6,7 +6,7 @@
 
 No cloud. No accounts. No telemetry. Nothing ever leaves your network.
 
-[![tests](https://img.shields.io/badge/tests-508%20passing-brightgreen)](tests/)
+[![tests](https://img.shields.io/badge/tests-519%20passing-brightgreen)](tests/)
 [![python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![dependencies](https://img.shields.io/badge/runtime%20deps-stdlib%20only-success)](#engineering-discipline)
 [![privacy](https://img.shields.io/badge/cloud-none-critical)](#security--privacy)
@@ -141,7 +141,7 @@ flowchart LR
 | **Distilled memory (GIST)** | 🔬 | A deterministic, integer-exact "field notebook" of the home's rhythm — the integer core is built; the full format is in design ([spec](docs/MEMORY-GIST.md)). |
 | Undo button · automatic lighting · calendar/weather · guardian · voice · camera | 🔜 / 🅿️ | On the [plan](docs/PLAN-FORWARD.md) — undo is next; the rest is sequenced or needs hardware. |
 
-**508 stdlib tests pass** — and the tested graph *is* the shipped graph.
+**519 stdlib tests pass** — and the tested graph *is* the shipped graph.
 
 ## Quickstart
 
@@ -150,7 +150,7 @@ Python 3.11+, **standard library only** — no dependencies to run the spine.
 ```sh
 git clone https://github.com/kezystry/homie.git && cd homie
 
-python3 -m unittest discover -s tests   # the full suite (508 tests)
+python3 -m unittest discover -s tests   # the full suite (519 tests)
 python3 scripts/spine_demo.py           # the five-part loop, end to end on one node
 python3 scripts/status.py --text        # a live status board (great over SSH)
 python3 scripts/run.py                  # the daemon (bus + Remember + Supervisor + tiles)
@@ -184,7 +184,7 @@ rollback-able generation, and the box updates itself via a pull → health-check
 core/        the spine: bus · remember · reason · act · reconcile · tile runtime ·
              capability · wake_ledger · serving · ha · ws · canonical · ritual · mesh …
 tiles/       living tiles — personal · security · lighting — + _template for new ones
-tests/       stdlib unittest suite (49 files, 508 tests)
+tests/       stdlib unittest suite (51 files, 519 tests)
 scripts/     run.py (daemon) · spine_demo.py (demo) · status.py (live board) · update.py
 os/          dual-boot hardened NixOS profile + INSTALL.md
 deploy/      runtime config — act_map.toml · llm.py · home.py · MODEL.md (model card)

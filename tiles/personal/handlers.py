@@ -38,6 +38,14 @@ class Personal(Tile):
     async def on_event(self, event: Event, ctx: Context) -> None:
         if event.topic == "time.morning":
             await self._morning(event, ctx)
+        elif event.topic == "agenda.external":
+            # The live HA calendar/to-do/weather snapshot (core/ha_agenda.py). Cache it; the
+            # morning render folds the freshest one — the tile never blocks on the network.
+            await self.state.put("external", {
+                "events": event.payload.get("events", []),
+                "todos": event.payload.get("todos", []),
+                "weather": event.payload.get("weather"),
+            })
         elif event.topic == "presence.arrived":
             # Legacy welcome-offer kept light; the rich note is the morning briefing, not this.
             if self.state.get("suppress_agenda"):
@@ -51,16 +59,22 @@ class Personal(Tile):
         tz = _tz()
         day_start = _local_day_start(now, tz)
 
-        # The Agenda, folded from what Homie already has: learned routines + the owner's list.
+        # The Agenda, folded from what Homie already has: learned routines + the owner's list +
+        # the live HA snapshot (real calendar events, to-dos, weather) cached from agenda.external.
         rows = await ctx.beliefs(now)
         items = agenda.from_beliefs(rows, day_start=day_start)
         for text in list(self.state.get("reminders", [])) + list(self.state.get("tasks", [])):
             items.append(agenda.AgendaItem(
                 kind=agenda.DUE, when=agenda.Temporal.floating(), title=str(text),
                 source="personal", source_id=str(text)))
+        external = self.state.get("external", {}) or {}
+        items += agenda.from_ha_calendar([e for e in external.get("events", []) if e.get("start")])
+        items += agenda.from_ha_todo(external.get("todos", []))
+        weather = agenda.weather_clause(external.get("weather"))
 
         view = agenda.AgendaView(items, tz=os.environ.get("HOMIE_TZ"))
-        brief = briefing_mod.build(view, now, tz=tz, recap_line=self._recap_line(now, tz))
+        brief = briefing_mod.build(view, now, weather=weather, tz=tz,
+                                   recap_line=self._recap_line(now, tz))
 
         # ONE budgeted proactive line through the VoiceGate; the full page goes to the screen.
         line = brief.speak_line()

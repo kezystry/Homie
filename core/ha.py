@@ -196,12 +196,38 @@ class HomeAssistantClient:
                 self._pending.pop(msg_id, None)
                 raise
         try:
-            success = await asyncio.wait_for(fut, self._result_timeout)
+            result = await asyncio.wait_for(fut, self._result_timeout)
         except asyncio.TimeoutError as ex:
             self._pending.pop(msg_id, None)
             raise ConnectionError(f"Home Assistant did not confirm {service} on {entity_id}") from ex
-        if not success:
+        if not (result.get("success") if isinstance(result, dict) else result):
             raise RuntimeError(f"Home Assistant rejected {service} on {entity_id}")
+
+    async def request(self, payload: dict, *, timeout: float | None = None) -> object:
+        """Send a WS command and return HA's `result` payload (NOT just success) — the read
+        seam for calendar/todo/weather queries. Same id/await machinery as `drive`, so it is
+        serialized through the one socket and fails closed if disconnected or unanswered."""
+        conn = self._conn
+        if conn is None:
+            raise ConnectionError("Home Assistant is not connected")
+        fut = asyncio.get_running_loop().create_future()
+        async with self._send_lock:
+            self._id += 1
+            msg_id = self._id
+            self._pending[msg_id] = fut
+            try:
+                await conn.send({"id": msg_id, **payload})
+            except Exception:
+                self._pending.pop(msg_id, None)
+                raise
+        try:
+            message = await asyncio.wait_for(fut, timeout or self._result_timeout)
+        except asyncio.TimeoutError as ex:
+            self._pending.pop(msg_id, None)
+            raise ConnectionError(f"Home Assistant did not answer {payload.get('type')}") from ex
+        if isinstance(message, dict) and not message.get("success", True):
+            raise RuntimeError(f"Home Assistant rejected {payload.get('type')}: {message.get('error')}")
+        return message.get("result") if isinstance(message, dict) else message
 
     # --- lifecycle (called by the Daemon if present) -------------------------- #
     async def start(self) -> None:
@@ -320,10 +346,10 @@ class HomeAssistantClient:
 
     async def _handle(self, message: dict) -> None:
         mtype = message.get("type")
-        if mtype == "result":  # the ack for a call_service (NEW-1) — resolve the waiter
-            fut = self._pending.pop(message.get("id"), None)
+        if mtype == "result":  # the ack for a call_service / query — resolve the waiter with
+            fut = self._pending.pop(message.get("id"), None)  # the FULL message (success + result)
             if fut is not None and not fut.done():
-                fut.set_result(bool(message.get("success")))
+                fut.set_result(message)
             return
         if mtype == "pong":
             return  # liveness only — _last_recv was already bumped by the recv loop
