@@ -43,7 +43,9 @@ M5   ✅ shipped   Capability-gated act path — no faked commands (closes C2/C1
 M6   ✅ shipped   8B-on-3060 serving discipline — latency SLO, warm/cold, tool grammar
 PA   ✅ shipped   Phase A — Self-pacing voice: one governor that LEARNS how chatty to be (anti-nag)
 PB   ✅ core      Phase B — honest beliefs: prob∈[0,1] + mean-revert + nmin (fixes the >1.0 bug)
-PC   🔄 building  Phase C — first win: "What Homie Knows" page ✅ · Agenda+Briefing+route ✅ ·
+PD   🔄 building  Phase D — the undo button: confirm gate ✅ · Friction Ledger (reversible rows) ✅
+                 · one-key undo re-drive next
+PC   ✅ done     Phase C — first win: "What Homie Knows" page ✅ · Agenda+Briefing+route ✅ ·
                  morning wiring ✅ (clock fires time.morning → ONE governed line + screen page);
                  backward recap line + HA calendar/weather sources + correction next
 M7   ⏳ planned    Positive-schema privacy guard + Dream Journal (retrieval)
