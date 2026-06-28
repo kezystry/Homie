@@ -53,12 +53,13 @@ from core.mesh import Link, MeshBridge
 from core.models import ModelRegistry
 from core.reason import LLMClient, NullLLMClient, Reason
 from core.reconcile import StateReconciler
+from core.selfimprove import ImproveTracker
 from core.remember import Remember
 from core.gist_store import GistCollector, GistStore
 from core.ritual import consolidate
 from core.watchdog import Watchdog
 from core.watchlog import WatchLog, WatchTracker
-from core.tile import Supervisor
+from core.tile import Event, Supervisor
 from core.undo import Undo
 from core.voice import VoiceGate
 
@@ -115,7 +116,7 @@ class Daemon:
     order (Remember LAST); `stop()` tears it down; `run_forever()` parks until the
     service is stopped. Tests inspect `.bus`, `.remember`, `.sup`, etc. directly."""
 
-    def __init__(self, *, bus, remember, consent, confirm, ledger, undo, commands, sup, act, reconciler, reason,
+    def __init__(self, *, bus, remember, consent, confirm, ledger, undo, commands, improve, sup, act, reconciler, reason,
                  voice, anchor, cockpit, mesh, clock, home, perception, config: DaemonConfig,
                  ha_agenda=None, groundskeeper=None, gist=None, watch=None) -> None:
         self.bus = bus
@@ -125,6 +126,7 @@ class Daemon:
         self.ledger = ledger          # the undo timeline: every confirmed action as a reversible row
         self.undo = undo              # one-tap reversal: re-drives a row's prior value (guarded ones ask)
         self.commands = commands      # owner-typed /commands in chat
+        self.improve = improve        # nightly self-improvement loop (correction-rate trend)
         self.sup = sup
         self.act = act
         self.reconciler = reconciler
@@ -160,6 +162,7 @@ class Daemon:
             await self.watch.start()          # record the full watch history (titles + all)
         await self.undo.start()               # one-tap reversal: re-drive a row's prior value
         await self.commands.start()           # owner-typed /commands in chat
+        await self.improve.start()            # count corrections; speak the trend each morning
         await self.voice.start()              # the muzzle: live BEFORE any tile can speak
         self.reconciler.attach(self.home)     # human state-changes -> friction
         # The home is a managed seam: a real adapter (HA WebSocket) runs a background
@@ -259,6 +262,7 @@ class Daemon:
         await self.confirm.stop()
         await self.undo.stop()
         await self.commands.stop()
+        await self.improve.stop()
         if self.gist is not None:
             await self.gist.stop()
         if self.watch is not None:
@@ -324,7 +328,18 @@ def build_daemon(home, perception: Perception | None, *, config: DaemonConfig | 
     # friction. ha_canonical normalizes values to the home's echo form.
     commands = CommandLog(canonical=ha_canonical)
     act = Act(bus, home, commands, act_map, registry=registry)
-    reconciler = StateReconciler(sup, commands, act_map.reverse, on_echo=act.confirm)
+    # Self-improvement (the measurable loop): a human reversal of Homie's own act is a
+    # correction; count them per day and speak the trend each morning.
+    improve = (ImproveTracker(bus, state_path=Path(config.state) / "improve.json",
+                              tz=os.environ.get("HOMIE_TZ"))
+               if config.state is not None else ImproveTracker(bus))
+
+    async def _on_correction(actuator, zone, actor, at):
+        await bus.publish(Event("friction.correction", at,
+                                {"actuator": actuator, "zone": zone, "actor": actor}, source="reconcile"))
+
+    reconciler = StateReconciler(sup, commands, act_map.reverse, on_echo=act.confirm,
+                                 on_correction=_on_correction)
 
     # Reason is ALWAYS wired; a real client means the cortex is present, else the
     # null client makes the proposer a tested no-op. The anchor chat floor is wired
@@ -392,7 +407,7 @@ def build_daemon(home, perception: Perception | None, *, config: DaemonConfig | 
             tz=os.environ.get("HOMIE_TZ"),
         )
 
-    return Daemon(bus=bus, remember=remember, consent=consent, confirm=confirm, ledger=ledger, undo=undo, commands=slash_commands, sup=sup, act=act,
+    return Daemon(bus=bus, remember=remember, consent=consent, confirm=confirm, ledger=ledger, undo=undo, commands=slash_commands, improve=improve, sup=sup, act=act,
                   reconciler=reconciler, reason=reason, voice=voice, anchor=anchor,
                   cockpit=cockpit, mesh=mesh, clock=clock, home=home, perception=perception, ha_agenda=ha_agenda,
                   groundskeeper=groundskeeper, gist=gist, watch=watch, config=config)
