@@ -48,9 +48,11 @@ _TWO = decimal.Decimal(2)
 _HL = decimal.Decimal(HALF_LIFE_NIGHTS)
 
 
-def decay_q(value_q: int, nights: int) -> int:
-    """Decay a fixed-point integer by ``2**(-nights/HALF_LIFE_NIGHTS)``, banker's-rounded back
-    to an integer. Deterministic across hosts (pinned Decimal context + ROUND_HALF_EVEN).
+def decay_q(value_q: int, nights: int, hl: int = HALF_LIFE_NIGHTS) -> int:
+    """Decay a fixed-point integer by ``2**(-nights/hl)``, banker's-rounded back to an integer.
+    Deterministic across hosts (pinned Decimal context + ROUND_HALF_EVEN). `hl` is an INTEGER
+    half-life in nights (default 30) — the persistence path passes a longer, earned one; it is
+    never a float, so the signed state stays bit-identical across hosts.
 
     ``nights == 0`` is the identity; a negative ``nights`` is refused — a replayed clock never
     runs backward, so mass never grows (mirrors `remember.py`'s clamp)."""
@@ -58,7 +60,7 @@ def decay_q(value_q: int, nights: int) -> int:
         raise ValueError("decay_q: nights must be >= 0 (time never runs backward)")
     if nights == 0 or value_q == 0:
         return value_q
-    exponent = _CTX.divide(decimal.Decimal(-nights), _HL)
+    exponent = _CTX.divide(decimal.Decimal(-nights), decimal.Decimal(hl))
     factor = _CTX.power(_TWO, exponent)
     scaled = _CTX.multiply(decimal.Decimal(value_q), factor)
     return int(scaled.to_integral_value(rounding=decimal.ROUND_HALF_EVEN))
@@ -137,8 +139,12 @@ class Schema:
         return replace(self, tokens=tuple(sorted(self.tokens)))
 
     def decayed(self, nights: int) -> "Schema":
+        # Confidence (beta) and the time-shape decay at BASE — so a stopped routine still fades
+        # fast (anti-fossilization, untouched). PERSISTENCE (day_mass) decays at the line's
+        # EARNED half-life, so a deeply-proven pattern lingers for years as a low-confidence
+        # "you used to…" memory — present-belief honesty + long-record wisdom, decoupled.
         return replace(self, beta=self.beta.decayed(nights), time=self.time.decayed(nights),
-                       day_mass_q=decay_q(self.day_mass_q, nights))
+                       day_mass_q=decay_q(self.day_mass_q, nights, persist_hl(self.beta)))
 
 
 # --------------------------------------------------------------------------- #
@@ -152,6 +158,21 @@ def firmness(beta: Beta) -> int:
     if n_days <= 0:
         return 0
     return min(9, n_days.bit_length() - 1)
+
+
+# Persistence (≠ confidence): how long a line's RECORD survives, earned by how proven it is.
+# Confidence still decays at BASE (30); only this — the day_mass that gates the forget-drop —
+# earns a longer half-life, so a months-proven routine lingers for years as honest low-confidence
+# wisdom. Integer + bit_length-derived → deterministic, no float in the signed state.
+PERSIST_PER_FIRM = 75   # extra half-life nights per firmness step
+PERSIST_MAX = 365       # the "max 1 year" ceiling (Charter 22a) — applied to record, not belief
+PERSIST_FLOOR = SCALE   # a line is still "a thing that existed" while day_mass ≥ 1 day-unit
+
+
+def persist_hl(beta: Beta) -> int:
+    """The earned persistence half-life (nights) for a line of this evidence depth: BASE for a
+    coincidence (firmness 0 → 30), rising to the 1-year ceiling for a months-proven routine."""
+    return min(PERSIST_MAX, HALF_LIFE_NIGHTS + PERSIST_PER_FIRM * firmness(beta))
 
 
 def confidence_q(beta: Beta) -> int:
@@ -377,7 +398,14 @@ def fold_day(prior: list[Schema], observations: list[DayObs], *, daytype: str,
     for s in by_match.values():
         if off_zones and any(t in off_zones for t in s.tokens):  # OFF-fence at write
             continue
-        if s.beta.a_q + s.beta.b_q < 1 and s.day_mass_q < 1:     # faded to nothing → forget
+        # Forget-drop. A PROVEN line is kept as long as its earned persistence (day_mass)
+        # survives — so it lingers for years as a low-confidence "you used to…" record, even
+        # after its belief has honestly collapsed. An unproven coincidence is forgotten the
+        # moment both its evidence and its (base-decayed) mass fade to nothing.
+        proven = firmness(s.beta) >= GIST_NMIN
+        keep = (s.day_mass_q >= PERSIST_FLOOR) if proven else \
+               (s.beta.a_q + s.beta.b_q >= 1 or s.day_mass_q >= 1)
+        if not keep:
             continue
         out.append(replace(s, kind=_kind_for(s.beta, s.kind)))
     out += seqs

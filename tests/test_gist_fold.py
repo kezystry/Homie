@@ -10,8 +10,8 @@ Run: python3 -m unittest discover -s tests
 import unittest
 
 from core.gist import (
-    GIST_NMIN, SCALE, Beta, DayObs, Schema, confidence_q, daypart_of, daytype_of,
-    encode_state, firmness, fold_day,
+    GIST_NMIN, PERSIST_FLOOR, PERSIST_MAX, SCALE, Beta, DayObs, Schema, confidence_q,
+    daypart_of, daytype_of, encode_state, firmness, fold_day, persist_hl,
 )
 
 
@@ -101,6 +101,72 @@ class FoldTests(unittest.TestCase):
         a = fold_n(10, [obs(7, "coffee", "kitchen"), obs(19, "dinner", "kitchen")])
         b = fold_n(10, [obs(19, "dinner", "kitchen"), obs(7, "coffee", "kitchen")])  # input reordered
         self.assertEqual(encode_state(a), encode_state(b))     # same bytes regardless of order
+
+
+class PersistenceTests(unittest.TestCase):
+    """Mechanism 2 (council-ratified): confidence fades fast and honestly; only the line's
+    RECORD lingers for years. Belief honesty + record wisdom, decoupled."""
+
+    def _proven(self):
+        return fold_n(40, [obs(7, "coffee", "kitchen")])[0]   # firm coffee line
+
+    def test_persist_hl_grows_with_firmness_and_caps(self) -> None:
+        self.assertEqual(persist_hl(Beta(0, 0)), 30)              # a coincidence → base
+        self.assertLessEqual(persist_hl(Beta(10_000_000, 0)), PERSIST_MAX)  # capped at 1 year
+        self.assertGreater(persist_hl(Beta(50 * SCALE, 0)), 30)   # proven → longer
+
+    def test_confidence_is_untouched_by_persistence(self) -> None:
+        # The anti-fossilization invariant: persistence (day_mass) must never enter confidence.
+        a = Schema("rule", "wd", "dawn", ("coffee",), Beta(40 * SCALE, SCALE), day_mass_q=40 * SCALE)
+        b = replace_day_mass(a, 999 * SCALE)                      # wildly different persistence
+        self.assertEqual(confidence_q(a.beta), confidence_q(b.beta))
+
+    def test_genuine_stop_fades_confidence_but_keeps_the_record(self) -> None:
+        line = self._proven()
+        c0 = confidence_q(line.beta)
+        self.assertGreater(c0, 800)
+        state = [line]
+        for _ in range(7):                                        # 7 active wd no-show nights
+            state = fold_day(state, [obs(19, "dinner", "kitchen")], daytype="wd")
+        coffee = next(s for s in state if "coffee" in s.tokens)
+        self.assertLess(confidence_q(coffee.beta), 800)          # belief faded fast (anti-fossil)
+        self.assertGreaterEqual(coffee.day_mass_q, PERSIST_FLOOR)  # but the RECORD persists
+        self.assertGreaterEqual(firmness(coffee.beta), GIST_NMIN)  # still deeply-evidenced ("you used to")
+
+    def test_holiday_preserves_a_proven_routine(self) -> None:
+        state = fold_n(40, [obs(7, "coffee", "kitchen")])
+        for _ in range(21):                                       # 3-week AWAY gap (no wd β)
+            state = fold_day(state, [], daytype="aw")
+        coffee = next(s for s in state if "coffee" in s.tokens)
+        self.assertGreater(confidence_q(coffee.beta), 700)       # survives the holiday intact
+        self.assertGreaterEqual(coffee.day_mass_q, PERSIST_FLOOR)
+
+    def test_re_confirmation_rebuilds_belief_gradually(self) -> None:
+        conf = lambda st: confidence_q(next(s for s in st if "coffee" in s.tokens).beta)
+        state = fold_n(40, [obs(7, "coffee", "kitchen")])
+        for _ in range(7):
+            state = fold_day(state, [obs(19, "dinner", "kitchen")], daytype="wd")
+        faded = conf(state)
+        self.assertLess(faded, 800)                              # belief had honestly faded
+        state = fold_day(state, [obs(7, "coffee", "kitchen")], daytype="wd")
+        self.assertGreater(conf(state), faded)                  # one real morning nudges it UP
+        for _ in range(4):                                       # a few more mornings...
+            state = fold_day(state, [obs(7, "coffee", "kitchen")], daytype="wd")
+        self.assertGreater(conf(state), 700)                    # ...and it climbs back (gradual, honest)
+
+    def test_proven_wisdom_resists_eviction_over_fresh_noise(self) -> None:
+        # A faded-but-once-proven line must outrank never-proven noise under prune pressure.
+        state = fold_n(40, [obs(7, "coffee", "kitchen")])
+        for _ in range(7):                                        # let coffee fade (low conf)
+            state = fold_day(state, [obs(19, "dinner", "kitchen")], daytype="wd")
+        noise = [obs(h % 24, f"blip{h}", "z") for h in range(60)]
+        state = fold_day(state, noise, daytype="wd", max_schemas=20)
+        self.assertIn("coffee", {t for s in state for t in s.tokens})   # wisdom survived the cull
+
+
+def replace_day_mass(s: Schema, v: int) -> Schema:
+    from dataclasses import replace
+    return replace(s, day_mass_q=v)
 
 
 if __name__ == "__main__":
