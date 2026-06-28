@@ -139,7 +139,7 @@ flowchart LR
 | **Morning surface** | ✅ | A plain "what Homie knows" page + a daily recap (yesterday) and briefing (today's agenda + a sensible errand order), capped so it never floods. |
 | **Serving discipline** | ✅ | Local-model latency SLO, warm/cold GPU policy, and JSON-schema-constrained tool decoding (the GPU brain itself is not yet stood up). |
 | **Distilled memory (GIST)** | 🔬 | A deterministic, integer-exact "field notebook" of the home's rhythm — the integer core is built; the full format is in design ([spec](docs/MEMORY-GIST.md)). |
-| Privacy guard · undo · voice · camera head | ⏳ | On the roadmap (M7–M11). |
+| Undo button · automatic lighting · calendar/weather · guardian · voice · camera | 🔜 / 🅿️ | On the [plan](docs/PLAN-FORWARD.md) — undo is next; the rest is sequenced or needs hardware. |
 
 **443 stdlib tests pass** — and the tested graph *is* the shipped graph.
 
@@ -225,18 +225,22 @@ See [docs/SECURITY.md](docs/SECURITY.md). Reviews live in [docs/audits/](docs/au
 
 ## Roadmap
 
-Shipped **M0–M6** (the reasoning spine, wake governance, capability gate, the Home Assistant hand,
-serving discipline). Next:
+The plan is written as **things you'll feel, in order** (full version:
+[docs/PLAN-FORWARD.md](docs/PLAN-FORWARD.md)). The non-negotiable rules are the
+[CHARTER](docs/CHARTER.md); the binding near-term scope is [SCOPE](docs/SCOPE.md).
 
-| Milestone | Theme |
-|---|---|
-| **M7** | Positive-schema privacy guard + Dream Journal (GIST retrieval) |
-| **M8** | Friction-ledger pane + one-key undo |
-| **M9** | Deploy posture + OS confinement |
-| **M10** | Visible posture + trust tiers ("see what Homie knows") |
-| **M11** | Nightly self-refresh: hygiene · self-heal · self-upgrade · restart |
+| | Step | State |
+|---|---|---|
+| 1–4 | Knows you · handles your mornings · won't nag · **drives your real lights** | ✅ done |
+| 5 | You can answer yes/no (the confirm gate works) | ✅ done |
+| **6** | **An undo button** — reverse anything, one tap, with a correction log | 🔜 **now** |
+| 7 | Lights act on their own (dusk → presence) | 🔜 |
+| 8–9 | Real calendar + weather in the briefing · the overnight "what changed" note | 🔜 |
+| 10–11 | House locked down · the guardian wakes (intrusion, hazard, emergency) | 🅿️ |
+| 12–14 | The butler (life-admin + KartenWerk) · nightly self-upgrade · camera human-reading | 🅿️ |
 
-Full detail in [docs/MASTERPLAN.md](docs/MASTERPLAN.md) · live status in [docs/PROGRESS.md](docs/PROGRESS.md).
+✅ done · 🔜 next · 🅿️ deferred on purpose (built once the soul is lived-in). Live status:
+[docs/PROGRESS.md](docs/PROGRESS.md).
 
 ## Documentation
 
