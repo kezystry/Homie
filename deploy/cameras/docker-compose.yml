@@ -1,0 +1,49 @@
+# Homie's eyes — the box-side stack: live view (go2rtc) + NVR/detect (Frigate + Hailo-8).
+#
+# Bring-up:
+#   1. python3 scripts/camera_setup.py --write       # generates go2rtc.yml + frigate.yml here
+#   2. put your RTSP password in /etc/homie-cameras.env  (RTSP_PW=...)   — never in the repo
+#   3. cd deploy/cameras && docker compose up -d
+#   4. open go2rtc  http://<box-ip>:1984   (live, full quality)
+#      open Frigate http://<box-ip>:5000   (recordings + draw your zones)
+#
+# Everything stays LOCAL. To watch from outside, join your own network over WireGuard
+# (see ./wireguard/) — no camera port is ever exposed to the internet.
+#
+# NOTE: this is bring-up scaffold — validate it on the box on first run. The Hailo device
+# path and your camera substreams are per-install facts the repo can't test for you.
+services:
+  # ---- Live view: go2rtc passes each camera's NATIVE codec straight to WebRTC (no
+  #      transcode) → exactly what the sensor sends, at its frame rate, sub-second latency.
+  go2rtc:
+    container_name: homie-go2rtc
+    image: alexxit/go2rtc:latest
+    restart: unless-stopped
+    env_file: /etc/homie-cameras.env        # supplies ${RTSP_PW}; absent file → comment this out
+    ports:
+      - "1984:1984"      # web UI / API
+      - "8555:8555/tcp"  # WebRTC
+      - "8555:8555/udp"
+    volumes:
+      - ./go2rtc.yml:/config/go2rtc.yaml:ro
+
+  # ---- NVR + on-device detection. Detection runs on the Hailo-8 (PCIe), never the cloud.
+  #      Frigate embeds its own go2rtc internally; we DON'T publish its 1984/8555 so it can't
+  #      clash with the standalone go2rtc above — Frigate here is recordings + detection.
+  frigate:
+    container_name: homie-frigate
+    image: ghcr.io/blakeblackshear/frigate:stable
+    restart: unless-stopped
+    shm_size: "256mb"                        # raise for many cameras (Frigate logs the need)
+    env_file: /etc/homie-cameras.env
+    devices:
+      - /dev/hailo0:/dev/hailo0              # the Hailo-8 accelerator (PCIe M.2)
+    ports:
+      - "5000:5000"      # web UI (recordings, zone drawing)
+      - "8554:8554"      # RTSP restream (optional)
+    volumes:
+      - ./frigate.yml:/config/config.yml:ro
+      - ./media:/media/frigate               # recordings live here — back this up / size for it
+      - /etc/localtime:/etc/localtime:ro
+    tmpfs:
+      - /tmp/cache:size=1000000000           # 1 GB recording cache in RAM (saves the SD card)

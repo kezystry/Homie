@@ -26,8 +26,18 @@
   # with the ["video"] set in configuration.nix → homie ends up in both groups.
   users.users.homie.extraGroups = [ "docker" ];
 
-  # Open Home Assistant's web UI (port 8123) to the LAN. NixOS's firewall is default-deny,
-  # so without this only the box itself (loopback) can reach HA — the phone/laptop can't.
-  # This is a LOCAL port on your own network; nothing is exposed to the internet.
-  networking.firewall.allowedTCPPorts = [ 8123 ];
+  # Open the LAN-facing service ports. NixOS's firewall is default-deny, so without this
+  # only the box itself (loopback) could reach these — the phone/laptop on your LAN can't.
+  # These are LOCAL ports on your own network; nothing here is exposed to the internet.
+  #   8123  Home Assistant web UI
+  #   1984  go2rtc  — live camera view (WebRTC API/UI)
+  #   8555  go2rtc  — WebRTC media (also opened on UDP below)
+  #   5000  Frigate — recordings + zone drawing
+  networking.firewall.allowedTCPPorts = [ 8123 1984 8555 5000 ];
+
+  # go2rtc WebRTC media + the WireGuard tunnel are UDP.
+  #   8555  go2rtc WebRTC media
+  #  51820  WireGuard — the ONLY port you forward on the router for "watch from anywhere".
+  #         It reveals nothing without your key; cameras themselves stay un-exposed.
+  networking.firewall.allowedUDPPorts = [ 8555 51820 ];
 }
