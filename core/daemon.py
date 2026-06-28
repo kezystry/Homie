@@ -51,6 +51,7 @@ from core.reconcile import StateReconciler
 from core.remember import Remember
 from core.ritual import consolidate
 from core.tile import Supervisor
+from core.undo import Undo
 from core.voice import VoiceGate
 
 log = logging.getLogger("homie.daemon")
@@ -97,13 +98,14 @@ class Daemon:
     order (Remember LAST); `stop()` tears it down; `run_forever()` parks until the
     service is stopped. Tests inspect `.bus`, `.remember`, `.sup`, etc. directly."""
 
-    def __init__(self, *, bus, remember, consent, confirm, ledger, sup, act, reconciler, reason,
+    def __init__(self, *, bus, remember, consent, confirm, ledger, undo, sup, act, reconciler, reason,
                  voice, anchor, cockpit, mesh, clock, home, perception, config: DaemonConfig) -> None:
         self.bus = bus
         self.remember = remember
         self.consent = consent
         self.confirm = confirm        # turns a chat yes/no into a confirm.response (Consent answerable)
         self.ledger = ledger          # the undo timeline: every confirmed action as a reversible row
+        self.undo = undo              # one-tap reversal: re-drives a row's prior value (guarded ones ask)
         self.sup = sup
         self.act = act
         self.reconciler = reconciler
@@ -129,6 +131,7 @@ class Daemon:
         await self.confirm.start()            # makes the consent gate answerable from chat
         await self.act.start()
         await self.ledger.start()             # record actions for the undo timeline
+        await self.undo.start()               # one-tap reversal: re-drive a row's prior value
         await self.voice.start()              # the muzzle: live BEFORE any tile can speak
         self.reconciler.attach(self.home)     # human state-changes -> friction
         # The home is a managed seam: a real adapter (HA WebSocket) runs a background
@@ -205,6 +208,7 @@ class Daemon:
         await self.reason.stop()
         await self.voice.stop()
         await self.confirm.stop()
+        await self.undo.stop()
         await self.ledger.stop()
         if self.anchor is not None:
             await self.anchor.stop()
@@ -247,6 +251,10 @@ def build_daemon(home, perception: Perception | None, *, config: DaemonConfig | 
     # true: a tile can only drive what its manifest declares, at the priority it declares,
     # even via a raw emit (C2). Built here so there is exactly one instance (the keystone).
     registry = CapabilityRegistry()
+    # One-tap undo: re-drives a ledger row's prior value through the SAME capability-gated act
+    # path (it mints its own ("undo", actuator) handle — never a forged payload). Guarded
+    # domains (locks/garage/alarm) route through Consent first; everything else is instant.
+    undo = Undo(bus, ledger, registry, consent=consent)
     sup = Supervisor(tiles_dir, bus, remember=remember, consent=consent,
                      state_root=config.state, registry=registry)
 
@@ -274,7 +282,7 @@ def build_daemon(home, perception: Perception | None, *, config: DaemonConfig | 
     mesh = MeshBridge(config.node_id, bus, config.mesh_link) if config.mesh_link is not None else None
     clock = Clock(bus, now=config.now, tick_seconds=config.tick_seconds, morning_hour=config.morning_hour)
 
-    return Daemon(bus=bus, remember=remember, consent=consent, confirm=confirm, ledger=ledger, sup=sup, act=act,
+    return Daemon(bus=bus, remember=remember, consent=consent, confirm=confirm, ledger=ledger, undo=undo, sup=sup, act=act,
                   reconciler=reconciler, reason=reason, voice=voice, anchor=anchor,
                   cockpit=cockpit, mesh=mesh, clock=clock, home=home, perception=perception,
                   config=config)

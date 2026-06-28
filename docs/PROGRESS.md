@@ -5,7 +5,7 @@ the **what & why**; this file is the **how it's going**. Updated every time a mi
 lands or a decision is taken.*
 
 - **Branch:** `claude/homie-overview-bo4l8v`
-- **Tests:** 497 passing (`python3 -m unittest discover -s tests`) — green on every push
+- **Tests:** 505 passing (`python3 -m unittest discover -s tests`) — green on every push
 - **Last updated:** 2026-06-28, after the **Camera foundation** (registry + positive zone-allowlist +
   go2rtc/Frigate config-gen + the edge adapter where frames die — see [`docs/CAMERA.md`](CAMERA.md)) and
   the **external-audit safety pass** (FIFO confirm queue + exact-match yes/no + the Coherence test that
@@ -47,8 +47,8 @@ PB   ✅ core      Phase B — honest beliefs: prob∈[0,1] + mean-revert + nmin
 PC   ✅ done     Phase C — first win: "What Homie Knows" page ✅ · Agenda+Briefing+route ✅ ·
                  morning wiring ✅ (clock fires time.morning → ONE governed line + screen page);
                  backward recap line + HA calendar/weather sources + correction next
-PD   🔄 building  Phase D — the undo button: confirm gate ✅ (FIFO + exact-match, audit-hardened) ·
-                 Friction Ledger ✅ · re-drive next
+PD   ✅ shipped   Phase D — the undo button: confirm gate ✅ (FIFO + exact-match, audit-hardened) ·
+                 Friction Ledger ✅ · one-tap re-drive ✅ (instant; guarded domains ask first)
 CAM  ✅ founded   Camera foundation — registry + positive zone-allowlist + go2rtc/Frigate config-gen
                  + edge adapter (frames die at the Pi) + the Coherence test. Box wiring next.
 M7   ⏳ planned    Positive-schema privacy guard + Dream Journal (retrieval)
