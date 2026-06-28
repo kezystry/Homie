@@ -8,8 +8,9 @@ name = "lighting"
 summary = "Presence-driven, after-dark room lighting that learns from reversals."
 
 [subscribes]
-# timer.fired drives the vacancy auto-off (armed via timer.set on the Clock seam).
-events = ["presence.arrived", "presence.departed", "occupancy.changed", "timer.fired"]
+# timer.fired drives the vacancy auto-off (armed via timer.set on the Clock seam);
+# media.activity drives film-dimming (lights down when a film starts, up when it stops).
+events = ["presence.arrived", "presence.departed", "occupancy.changed", "timer.fired", "media.activity"]
 
 [provides]
 intents = ["lights on", "lights off"]

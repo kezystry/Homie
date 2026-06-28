@@ -31,18 +31,24 @@ class PolicyTests(unittest.TestCase):
     def test_outbound_allowlist(self) -> None:
         p = CockpitPolicy()
         # the cockpit may SEE these
-        self.assertTrue(p.may_send("interface.say"))
+        self.assertTrue(p.may_send("interface.spoken"))  # GOVERNED speech the owner hears
         self.assertTrue(p.may_send("security.alert"))
         self.assertTrue(p.may_send("presence.arrived"))
         self.assertTrue(p.may_send("actuator.done"))
         self.assertTrue(p.may_send("chat.reply"))
         self.assertTrue(p.may_send("wake.decision"))  # cortex wake telemetry (M3)
+        self.assertTrue(p.may_send("confirm.requested"))  # "are you sure?" — shown so it can be answered
         # the cockpit may SEE wake telemetry but may never PUBLISH it back
         self.assertFalse(p.may_receive("wake.decision"))
-        # but not raw perception internals or the act *request*
+        # the cockpit answers a confirm with a plain chat yes/no — it never publishes the
+        # response (or any drive) directly; the trusted ConfirmResponder does the translation.
+        self.assertFalse(p.may_receive("confirm.response"))
+        # but NOT the raw, ungoverned speech channel — only the VoiceGate's output renders,
+        # so a tile can never reach the owner without passing the speech budget (Phase A).
+        self.assertFalse(p.may_send("interface.say"))
+        # ...nor raw perception internals or the act *request*
         self.assertFalse(p.may_send("actuator.requested"))
         self.assertFalse(p.may_send("sensor.camera.frame"))
-        self.assertFalse(p.may_send("confirm.requested"))
 
     def test_inbound_is_chat_only(self) -> None:
         p = CockpitPolicy()
@@ -120,11 +126,11 @@ class BridgeIntegrationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_forwards_allowed_event(self) -> None:
         reader, writer = await self._connect()
-        await self.bus.publish(Event("interface.say", 0.0, {"text": "evening"}, source="reason"))
+        await self.bus.publish(Event("interface.spoken", 0.0, {"text": "evening"}, source="reason"))
         await self.bus.drain()
         line = await self._readline(reader)
         obj = json.loads(line)
-        self.assertEqual(obj["topic"], "interface.say")
+        self.assertEqual(obj["topic"], "interface.spoken")
         self.assertEqual(obj["payload"]["text"], "evening")
         writer.close()
 

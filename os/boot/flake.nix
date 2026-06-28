@@ -17,6 +17,7 @@
           ./configuration.nix
           ./hardware-configuration.nix
           ./nvidia-cuda.nix
+          ./virtualisation.nix   # Docker (+ compose) for running Home Assistant
         ];
       };
     };

@@ -100,7 +100,8 @@ class FakeConn:
     """In-memory HAConnection: delivers a scripted list of inbound messages, then parks
     (so the receive loop blocks instead of spinning). Records everything sent."""
 
-    def __init__(self, inbound, sent, *, auto_result=True, fail_service=False, auto_pong=True):
+    def __init__(self, inbound, sent, *, auto_result=True, fail_service=False, auto_pong=True,
+                 query_results=None):
         self._q = asyncio.Queue()
         for m in inbound:
             self._q.put_nowait(m)
@@ -109,6 +110,7 @@ class FakeConn:
         self._auto_result = auto_result
         self._fail_service = fail_service
         self._auto_pong = auto_pong
+        self._query_results = query_results or {}  # WS type -> result payload (for request())
 
     async def connect(self):
         pass
@@ -121,6 +123,9 @@ class FakeConn:
             self._q.put_nowait({"id": message["id"], "type": "result", "success": not self._fail_service})
         elif t == "ping" and self._auto_pong:
             self._q.put_nowait({"id": message["id"], "type": "pong"})
+        elif t in self._query_results:
+            self._q.put_nowait({"id": message["id"], "type": "result", "success": True,
+                                "result": self._query_results[t]})
 
     async def recv(self):
         item = await self._q.get()  # blocks (parks) when empty — no busy loop
@@ -171,6 +176,23 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(call["service_data"], {"brightness": 102})
         self.assertEqual(call["target"], {"entity_id": "light.living_room"})
         self.assertGreater(call["id"], sent[1]["id"])  # strictly increasing id
+        await client.stop()
+
+    async def test_request_returns_the_result_payload(self):
+        # The read seam (calendar/to-do/weather): request() returns HA's `result`, not just
+        # success, over the same id/await machinery as drive — and drive still works alongside.
+        sent = []
+        events = [{"summary": "dentist", "uid": "u1"}]
+        client = HomeAssistantClient(
+            lambda: FakeConn(_HANDSHAKE, sent, query_results={"calendar/event/list": events}),
+            "TOKEN", backoff_min=0.01)
+        await client.start()
+        await asyncio.wait_for(client.connected.wait(), 1.0)
+        got = await asyncio.wait_for(
+            client.request({"type": "calendar/event/list", "entity_id": "calendar.work"}), 1.0)
+        self.assertEqual(got, events)
+        # drive's success-path is unaffected by the dict-resolution change
+        await asyncio.wait_for(client.drive("light.kitchen", {"state": "on"}), 1.0)
         await client.stop()
 
     async def test_drive_raises_on_ha_rejection(self):

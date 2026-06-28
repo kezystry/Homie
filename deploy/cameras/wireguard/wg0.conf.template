@@ -1,0 +1,31 @@
+# WireGuard — the private tunnel that makes "stream anywhere" safe.
+#
+# This is how you watch your cameras from outside WITHOUT exposing a single camera to the
+# internet. WireGuard puts your phone *inside your own network*; go2rtc then serves you
+# locally, exactly as if you were home. The only thing crossing the internet is you,
+# encrypted. To the outside world there is no open camera port to find.
+#
+# ── Set it up once (on the home-control box) ─────────────────────────────────────────────
+#   1. Generate keys:        wg genkey | tee server.key | wg pubkey > server.pub
+#                            wg genkey | tee phone.key  | wg pubkey > phone.pub
+#   2. Fill the <…> blanks below from those files, save as /etc/wireguard/wg0.conf.
+#   3. Forward UDP 51820 on your router to the box (the ONLY port you open — and it reveals
+#      nothing without your key).
+#   4. Enable it (NixOS: networking.wireguard.interfaces.wg0; or `wg-quick up wg0`).
+#   5. On your phone, install WireGuard and add a tunnel with the [Peer]-side mirror of this.
+#
+# Keys are SECRET — never commit a filled-in copy. This file is a TEMPLATE; the real
+# /etc/wireguard/wg0.conf lives only on the box.
+
+[Interface]
+# The box's address inside the tunnel + its private key.
+Address = 10.7.0.1/24
+ListenPort = 51820
+PrivateKey = <server.key contents>
+
+[Peer]
+# Your phone: its public key + the tunnel IP it gets. AllowedIPs here is the box's view of
+# the phone. On the PHONE side, set AllowedIPs to your LAN (e.g. 192.168.1.0/24) so camera
+# traffic routes home; or 0.0.0.0/0 to send all phone traffic through home.
+PublicKey = <phone.pub contents>
+AllowedIPs = 10.7.0.2/32

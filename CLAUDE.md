@@ -16,7 +16,8 @@
 ## Where things are
 
 - **Docs live in `docs/`.** `README.md` (root) is the landing page; `CLAUDE.md`
-  (root, this file) is auto-loaded agent context.
+  (root, this file) is auto-loaded agent context. **`docs/CHARTER.md` is the Gerüst —
+  the load-bearing rules that must stay true; read it before any significant change.**
 - **Concept & roadmap:** `docs/OVERVIEW.md`, `docs/DESIGN.md`, `docs/ROADMAP.md`; the
   hardware build plan + the decided always-on topology + the question bank live in
   `docs/PLAN.md`; bring-up order in `docs/BRINGUP.md`; audit backlog in `docs/BACKLOG.md`.
@@ -24,12 +25,22 @@
   M0–M11); `docs/PROGRESS.md` is the living status board (how it's going — keep it updated
   in the same commit as each milestone).
 - **Engineering:** `docs/INTERNALS.md` (decisions), `docs/PROTOCOL.md` (tile wire
-  protocol), `docs/SECURITY.md` (privacy/identity), `docs/ARCHITECTURE.md`, `os/`
-  (dual-boot NixOS + `INSTALL.md`).
-- **Code:** `core/` (`bus`, `remember`, `tile` runtime + channels, `mesh`, `act`,
-  `reason` (cortex: novelty-gated LLM decide loop), `reconcile`, `consent`,
-  `canonical`, `ritual` (nightly consolidation)), `tiles/` (`personal`, `security`,
-  `lighting`), `tests/` (295 passing), `scripts/run.py` (daemon), `scripts/spine_demo.py`.
+  protocol), `docs/SECURITY.md` (privacy/identity), `docs/ARCHITECTURE.md`, `docs/CAMERA.md`
+  (the camera foundation: live/NVR/privacy contract), `os/` (dual-boot NixOS + `INSTALL.md`).
+- **Code:** `core/` (`bus`, `remember` (now with honest `prob`/`firm` beliefs), `tile`
+  runtime + channels, `clock`, `mesh`, `act` + `capability`, `reason` (cortex) + `serving`,
+  `reconcile`, `consent`, `confirm_responder`, `friction_ledger` + `undo` (one-tap reversal),
+  `groundskeeper` (silent storage hygiene), `watchdog` (sd_notify self-heal), `selfupdate`
+  (health-gated nightly upgrade + authority-freeze), `desktop` (safe PC control), `watchlog`
+  (the full watch history + recommendations), `commands` (owner-typed /commands), `models`
+  (switchable general/dev brains), `canonical`, `ritual`, `gist` + `gist_store` (the
+  nightly-distilled memory: earned persistence, runs in the ritual); the anti-nag waist `voice` +
+  `speech_budget`; the morning surface `journal` + `recap` + `agenda` + `briefing` + `route`;
+  the HA hand `ha` + `ws` + `ha_discovery`; the eyes `camera` (registry + zone-allowlist +
+  go2rtc/Frigate config-gen)), `perception/` (`frigate_adapter`, `desktop_adapter` — frames die
+  at the edge), `tiles/` (`personal`, `security`, `lighting`, `desktop`), `tests/` (625 passing),
+  `scripts/` (`run.py` daemon, `ha_setup.py`, `ha_light.py`, `camera_setup.py`, `update.py`,
+  `spine_demo.py`, `status.py`).
 - **Importable notes:** `obsidian/` is a cross-linked Obsidian vault mirroring the docs.
 
 ## Decided architecture (see docs/PLAN.md)

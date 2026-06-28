@@ -83,7 +83,7 @@ class DecayTests(unittest.TestCase):
         self.assertAlmostEqual(a.rate, b.rate, places=9)
         self.assertAlmostEqual(a.count, b.count, places=5)
         self.assertEqual(a.novel, b.novel)
-        self.assertEqual(m2.snapshot()["version"], 2)
+        self.assertEqual(m2.snapshot()["version"], 3)
 
     def test_decay_idempotent_at_fixed_now(self) -> None:
         m = PatternModel()
@@ -117,7 +117,7 @@ class DecayTests(unittest.TestCase):
         e = m.expectation("presence.arrived", "kitchen", day_at(2, 8))  # 2026-01-03 08:00
         self.assertFalse(e.novel)
         self.assertAlmostEqual(e.rate, 5 / 3, places=3)
-        self.assertEqual(m.snapshot()["version"], 2)
+        self.assertEqual(m.snapshot()["version"], 3)
 
     def test_unknown_future_version_rejected(self) -> None:
         m = PatternModel()

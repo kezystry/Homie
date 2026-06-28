@@ -5,9 +5,12 @@ the **what & why**; this file is the **how it's going**. Updated every time a mi
 lands or a decision is taken.*
 
 - **Branch:** `claude/homie-overview-bo4l8v`
-- **Tests:** 338 passing (`python3 -m unittest discover -s tests`) — green on every push
-- **Last updated:** 2026-06-27, after **M6** (serving discipline) + the **Home Assistant
-  adapter** (the real hand) + the GIST v2 memory format; M7 next
+- **Tests:** 625 passing (`python3 -m unittest discover -s tests`) — green on every push
+- **Last updated:** 2026-06-28, after the **Camera foundation** (registry + positive zone-allowlist +
+  go2rtc/Frigate config-gen + the edge adapter where frames die — see [`docs/CAMERA.md`](CAMERA.md)) and
+  the **external-audit safety pass** (FIFO confirm queue + exact-match yes/no + the Coherence test that
+  closes the speech-bypass). Prior: **Phase A** (the SpeechBudget muzzle), **M6** (serving discipline),
+  the **HA adapter** (driving the owner's real DIRIGERA bulbs), **GIST slice 2**.
 
 > **Updating the Homie box.** The box runs a git checkout at `/opt/homie`; update with
 > `python3 scripts/update.py` (pulls + runs the suite as a health check, reports safe/not),
@@ -39,6 +42,29 @@ M3   ✅ shipped   Wake telemetry → calibrated surprise → enforced budget
 M4   ✅ shipped   The hour-shaped lesson, spoken back
 M5   ✅ shipped   Capability-gated act path — no faked commands (closes C2/C14)
 M6   ✅ shipped   8B-on-3060 serving discipline — latency SLO, warm/cold, tool grammar
+PA   ✅ shipped   Phase A — Self-pacing voice: one governor that LEARNS how chatty to be (anti-nag)
+PB   ✅ core      Phase B — honest beliefs: prob∈[0,1] + mean-revert + nmin (fixes the >1.0 bug)
+PC   ✅ done     Phase C — first win: "What Homie Knows" page ✅ · Agenda+Briefing+route ✅ ·
+                 morning wiring ✅ (clock fires time.morning → ONE governed line + screen page) ·
+                 live HA calendar/to-do/weather feed ✅ (agenda.external → folded into briefing)
+PD   ✅ shipped   Phase D — the undo button: confirm gate ✅ (FIFO + exact-match, audit-hardened) ·
+                 Friction Ledger ✅ · one-tap re-drive ✅ (instant; guarded domains ask first)
+CAM  ✅ founded   Camera foundation — registry + positive zone-allowlist + go2rtc/Frigate config-gen
+                 + edge adapter (frames die at the Pi) + the Coherence test. Box wiring next.
+DUSK ✅ shipped   Dusk lighting offer-once-then-auto — first dusk ASKS, a yes locks in silent
+                 auto, repeated declines settle to no (anti-nag). Owner's call.
+SELF ◑ building  Self-sufficiency (Charter 8a/13a/22a/23a/25a/28a from a 5-pro council) — storage
+                 Groundskeeper ✅ · GIST nightly memory S1 ✅: slices 4+5 (classifiers + counted-
+                 absence fold + nmin promote + OFF-fence + bounded prune) · slice 6 prose brief
+                 (tense=honesty) · slice 7 store+collector wired into the ritual (runs nightly,
+                 persisted .ddn) · S1.5 earned persistence (Mechanism 2, 3-pro council: belief
+                 fades fast, record lingers years). S2 self-cycle ✅: health-gated self-upgrade
+                 (authority-freeze + auto-rollback + changelog) + sd_notify self-heal watchdog +
+                 NixOS nightly timer. Next: S3 consent/gallery.
+DESK ◑ building  Main-PC eyes+hands (3-pro council) — DesktopAdapter (X11 facts not frames) ✅ ·
+                 full WatchLog + recommendation engine (titles + taste + predictions) ✅ · desktop
+                 tile + safe capability-gated control (fixed verb allowlist, no exec) ✅. Next:
+                 deploy wiring + auto-behaviors (dim on film-start) + the recommend page surface.
 M7   ⏳ planned    Positive-schema privacy guard + Dream Journal (retrieval)
 M8   ⏳ planned    Friction Ledger pane + one-key undo
 M9   ⏳ planned    Deploy posture + confinement
@@ -52,9 +78,18 @@ Legend: ✅ shipped & pushed · 🔄 in progress · ⏳ planned · ⏸ blocked o
 
 ## Now / Next / Later
 
-- **Now (M7):** The privacy guard + Dream Journal — Homie remembers routines via retrieval
-  (the GIST format) while a positive-schema guard keeps private things (faces, raw camera) from
-  ever crossing between machines.
+- **Now (the six-thing soul, per [`docs/SCOPE.md`](SCOPE.md)):** the brainstorm + external audit
+  reordered the work. Build order: **(A) ✅ the muzzle** → **(B) honest beliefs** (the 3 GIST stat
+  fixes + `nmin` + crash-safe nightly fold — fixes a live bug, jumps the queue) → **(C) the first
+  win** (morning recap + "What Homie Knows" page) → **(D) felt control** (one-key undo + Friction
+  Ledger + the `confirm.response` producer) → **(E) lights+climate autonomy** (hand-set rungs, not a
+  rolling-score engine). Then live with it a month and let the lived-gap log authorise the 7th thing.
+- **Just shipped (Phase A — the muzzle):** `core/voice.py` + `core/speech_budget.py` — ONE global
+  governor on `interface.say`. Tiles emit facts; the VoiceGate decides what the owner actually hears
+  (`interface.spoken`, ~6 proactive lines/day, owner-chosen) vs what defers to the recap as a lossy
+  count (`speech.deferred`). Safety/summons bypass the budget; an everyday `voice.mute` is the
+  fastest nag-kill. The cockpit renders only the governed channel — a tile cannot reach the owner
+  ungoverned. This is the first instance of the single-waist law the audit called the system's best idea.
 - **Just shipped (M6 — serving discipline):** the cortex now decodes tool calls under their
   JSON-Schema grammar (fewer malformed-call drops), **times every model call against a latency
   SLO** and emits `reason.served` telemetry (latency, p95, met?), and keeps the GPU warm only

@@ -88,8 +88,20 @@
     wantedBy = [ "multi-user.target" ];
     after = [ "network.target" "local-fs.target" ];
 
+    # Crash-loop ceiling (Charter 27a): if it restarts >5 times in 5 min, STOP and surface the
+    # fault to the owner rather than thrashing silently. A box that restart-loops forever is
+    # hiding a problem — that's the opposite of self-healed.
+    startLimitIntervalSec = 300;
+    startLimitBurst = 5;
+
     serviceConfig = {
       ExecStart = "${pkgs.python311}/bin/python3 /opt/homie/scripts/run.py";
+      # Liveness watchdog (Charter 27a): the daemon proves it's alive with sd_notify; if it
+      # wedges (hung but not crashed), systemd kills + restarts it. Type=notify lets it send
+      # READY=1 on boot and WATCHDOG=1 on the heartbeat (core/watchdog.py).
+      Type = "notify";
+      WatchdogSec = "60s";
+      NotifyAccess = "main";
       WorkingDirectory = "/opt/homie";
       Environment = [
         "HOMIE_STATE=/var/lib/homie"
@@ -107,6 +119,17 @@
         # delivering it out-of-band (see the LoadCredential note below) over hard-coding.
         # "HOMIE_HOME_URL=ws://mini-pc.local:8123/api/websocket"
         # "HOMIE_HOME_TOKEN=<long-lived-access-token>"
+        #
+        # Desktop eyes + hands (the main PC / Stremio). Uncomment on the DESKTOP node to let
+        # Homie see the active app + what's playing (facts, never frames) and control playback
+        # (a fixed safe-verb allowlist via xdotool). Off by default. DISPLAY defaults to :0.
+        # "HOMIE_DESKTOP=1"
+        # "HOMIE_DESKTOP_DISPLAY=:0"
+        #
+        # Let owner-typed system /commands (/update, /restart, /reboot, /rebuild, /rollback)
+        # actually RUN from chat. Off by default → they just reply with the command to paste.
+        # Needs the polkit rule below so the `homie` user may restart/reboot without a password.
+        # "HOMIE_SHELL_COMMANDS=1"
       ];
       User = "homie";
       Group = "users";
@@ -130,6 +153,49 @@
       StateDirectory = "homie"; # -> /var/lib/homie (writable: the event log)
     };
   };
+
+  # ---------------------------------------------------------------------------
+  # Nightly self-upgrade (Charter 28/28a): pull → run the full suite as a health
+  # gate → auto-rollback if unsafe → hold any authority change for the owner →
+  # restart onto the new code → append the changelog. Runs on the always-on node.
+  # ---------------------------------------------------------------------------
+  systemd.services.homie-nightly = {
+    description = "Homie nightly self-upgrade (pull, health-gate, rollback, restart)";
+    after = [ "network-online.target" ];
+    wants = [ "network-online.target" ];
+    path = [ pkgs.git ];
+    serviceConfig = {
+      Type = "oneshot";
+      WorkingDirectory = "/opt/homie";
+      # --auto: roll back to last-good if the pulled code fails the suite; --restart: apply a
+      # healthy, non-authority update. Needs root to git-pull and restart the service.
+      ExecStart = "${pkgs.python311}/bin/python3 /opt/homie/scripts/update.py --auto --restart";
+    };
+  };
+
+  systemd.timers.homie-nightly = {
+    description = "Run Homie's nightly self-upgrade at 04:00 (Persistent: catches a missed boot)";
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnCalendar = "*-*-* 04:00:00";
+      Persistent = true;
+      RandomizedDelaySec = "600";
+    };
+  };
+
+  # Let owner-typed /restart, /reboot, /rebuild work from chat (only matters with
+  # HOMIE_SHELL_COMMANDS=1): allow the `homie` user to restart its own unit + reboot, no
+  # password. Narrow by action; everything else still needs the usual auth.
+  security.polkit.extraConfig = ''
+    polkit.addRule(function(action, subject) {
+      if (subject.user == "homie" &&
+          (action.id == "org.freedesktop.systemd1.manage-units" ||
+           action.id == "org.freedesktop.login1.reboot" ||
+           action.id == "org.freedesktop.login1.reboot-multiple-sessions")) {
+        return polkit.Result.YES;
+      }
+    });
+  '';
 
   # ---------------------------------------------------------------------------
   # Networking & hardening: firewall on; SSH off by default (opt-in).

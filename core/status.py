@@ -16,11 +16,32 @@ import html
 import json
 import re
 import subprocess
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _beliefs_from_state(state: Path) -> list[str]:
+    """Rebuild the pattern of life from the durability log (the production bootstrap path)
+    and render the plain-language 'What Homie knows' lines. Best-effort and fully guarded —
+    a missing/odd state never breaks the status page."""
+    try:
+        from core.bus import Bus
+        from core.journal import what_homie_knows
+        from core.remember import Remember
+        log_path = state / "events.jsonl"
+        if not any(state.glob("events*.jsonl")) and not (state / "events.snapshot.json").exists():
+            return []
+        bus = Bus(log_path=log_path)
+        remember = Remember()
+        remember.bootstrap(bus)
+        rows = remember.beliefs(time.time())
+        return what_homie_knows(rows) if rows else []
+    except Exception:
+        return []
 
 # status word -> (emoji, css class) so the page and the parser agree on one vocabulary.
 _STATUS = {
@@ -189,6 +210,28 @@ def runtime_facts(state_dir: Path | None) -> dict:
             lessons.append({"tile": tile, "room": room, "hours": sorted(hours)})
     facts["lessons"] = lessons
 
+    # What Homie KNOWS (the Dream Journal page): plain-language firm beliefs about the
+    # household's routines, rebuilt from the log. Honest beliefs only (>= the evidence floor).
+    facts["knows"] = _beliefs_from_state(state)
+
+    # The recommendation page: your watch history → taste + predictions + picks (best-effort,
+    # guarded — a missing/odd watch.json never breaks the status page).
+    # Live "now playing" — the answer to "what am I watching right now?".
+    now_path = state / "now.json"
+    if now_path.exists():
+        try:
+            facts["now_watching"] = json.loads(now_path.read_text("utf-8"))
+        except Exception:
+            pass
+
+    watch_path = state / "watch.json"
+    if watch_path.exists():
+        try:
+            from core.watchlog import WatchLog, render_page
+            facts["watch"] = render_page(WatchLog(watch_path).sessions(), datetime.now().timestamp())
+        except Exception:
+            pass   # a missing/odd watch.json never breaks the status page
+
     # Serving health (M6): the latest reason.served telemetry — how quick the brain was on
     # its last wake, the rolling p95, whether it met the SLO, and the GPU's warm state.
     served = _last_event_payload(state, "reason.served")
@@ -276,10 +319,24 @@ def render_html(facts: dict, *, live: bool = False, refresh: int = 10) -> str:
                 f'GPU <span class="muted">{_e(warm)}</span></p>')
         else:
             serving_html = ""
+        knows = rt.get("knows") or []
+        if knows:
+            kitems = "\n".join(f"<li>{_e(line)}</li>" for line in knows)
+            knows_html = f"<h3>What Homie knows about you</h3><ul class='lessons'>{kitems}</ul>"
+        else:
+            knows_html = ""
+        watch = rt.get("watch") or []
+        if watch:
+            witems = "\n".join(f"<li>{_e(line)}</li>" for line in watch)
+            watch_html = f"<h3>Your viewing — picks &amp; taste</h3><ul class='lessons'>{witems}</ul>"
+        else:
+            watch_html = ""
         runtime_html = (
             f'<p><b>{_e(ev.get("count", 0))}</b> events logged · last activity '
             f'<span class="muted">{_e(last)}</span></p>'
             f'{serving_html}'
+            f'{knows_html}'
+            f'{watch_html}'
             f'<h3>What Homie has learned</h3>{lessons_html}'
             f'<p class="muted tiny">{_e(rt.get("path",""))}</p>')
     else:
@@ -405,6 +462,19 @@ def render_text(facts: dict, *, color: bool = True, width: int = 64) -> str:
                 L.append(f"    · {l['tile']}: dark in the {c(l['room'], 'ok')} at {hrs}")
         else:
             L.append(c("    (no lessons learned yet)", "dim"))
+        now = rt.get("now_watching")
+        if now:
+            L.append(c(f"  ▶ now watching: {now.get('title')} ({now.get('app')})", "dim"))
+        knows = rt.get("knows") or []
+        if knows:
+            L.append(c("  what Homie knows about you:", "dim"))
+            for line in knows:
+                L.append(f"    · {line}")
+        watch = rt.get("watch") or []
+        if watch:
+            L.append(c("  your viewing — picks & taste:", "dim"))
+            for line in watch:
+                L.append(f"    {line}" if line.startswith("  ") else f"    · {line}")
     else:
         L.append(c(f"  daemon state not found — {rt.get('reason', '')}", "dim"))
 

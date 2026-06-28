@@ -1,0 +1,21 @@
+# Homie's switchable brains. Each profile is an OpenAI-compatible endpoint (llama-server /
+# Ollama on loopback) + the served model id + a role. One is active at a time; switch with
+# `/model <name>` in chat (it persists; /restart applies it to the running cortex).
+#
+# The owner's design: keep the big GENERAL brain that does everything, plus a same-size brain
+# FINE-TUNED for development/code — a specialist beats a generalist on its niche. Serve both
+# (two llama-server instances on different ports) and flip between them.
+#
+# These are EXAMPLES — set the real URLs/model ids for your boxes.
+
+[model.general]
+url = "http://127.0.0.1:8080/v1/chat/completions"
+model = "homie"
+role = "general"
+note = "The big general brain — home reasoning, chat, everything (the default)."
+
+[model.dev]
+url = "http://127.0.0.1:8081/v1/chat/completions"
+model = "homie-dev"
+role = "dev"
+note = "Fine-tuned for development/code — switch in when Homie works on itself."

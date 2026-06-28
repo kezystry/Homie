@@ -25,12 +25,16 @@ class StateReconciler:
         entity_to_actuator: dict[str, str],
         *,
         on_echo: Callable[[PendingCommand], Awaitable[None]] | None = None,
+        on_correction: Callable[[str, str | None, str | None, float], Awaitable[None]] | None = None,
         context: Callable[[str], tuple[str | None, str | None]] | None = None,
     ) -> None:
         self.sup = supervisor
         self.commands = commands
         self.rev = entity_to_actuator
         self.on_echo = on_echo
+        # Called when a HUMAN reversal of Homie's own act is detected (a real correction) — the
+        # measurable signal the nightly self-improvement loop counts. Optional.
+        self.on_correction = on_correction
         # Optional: resolve (zone, actor) for an entity at the moment of a human
         # change — e.g. the zone the actuator lives in and who is present (L2
         # label). Stamped onto the friction signal for per-person learning and the
@@ -54,3 +58,5 @@ class StateReconciler:
         sig = await self.sup.note_reversal(actuator, value, at, zone=zone, actor=actor)  # reverses a tile's act?
         if sig is None:  # no recent Homie act on it — a manual action
             await self.sup.note_manual(actuator, at, zone=zone, actor=actor)
+        elif self.on_correction is not None:  # a real correction of Homie — count it for self-improvement
+            await self.on_correction(actuator, zone, actor, at)

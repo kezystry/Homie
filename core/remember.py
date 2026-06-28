@@ -32,17 +32,27 @@ HALF_LIFE_DAYS = 30.0
 DAY_SECONDS = 86400.0
 LAMBDA = math.log(2) / (HALF_LIFE_DAYS * DAY_SECONDS)  # per-second decay rate
 EPS = 1e-3  # prune threshold on decayed day-mass
-SNAPSHOT_VERSION = 2
+NMIN_DAYS = 3.0  # evidence floor: below this many decayed active-days, a belief is "still
+                 # learning", never stated as fact (kills "a coincidence renders as a fact")
+SNAPSHOT_VERSION = 3
 
 Key = tuple[str, str | None]
 
 
 @dataclass(frozen=True)
 class Expectation:
-    rate: float  # ~events/day at this (key, hour) over the decay window
+    rate: float  # ~events/day at this (key, hour) over the decay window — the cortex's
+                 # rarity signal (LOW = surprising). UNCHANGED meaning; consumers rely on it.
     count: float  # decayed event mass in the bucket (evidence, not a raw count)
     days: float  # decayed effective days of evidence for the key
     novel: bool  # the (topic, zone) was never observed (or has fully decayed away)
+    # --- honest belief probability (Phase B) -------------------------------------- #
+    prob: float = 0.0   # P(this routine fires at this hour on a given day) ∈ [0,1]. The
+                        # numerator is decayed DISTINCT days present at this hour; the
+                        # denominator is the GLOBAL decayed active-day count — so a stopped
+                        # routine mean-reverts (FIX-2) and the value can never exceed 1 (FIX-1).
+    gdays: float = 0.0  # decayed global active-days (the shared denominator / evidence weight)
+    firm: bool = False  # gdays >= NMIN_DAYS — is there enough evidence to state prob as a belief?
 
 
 def _zone(event: Event) -> str | None:
@@ -57,10 +67,21 @@ class PatternModel:
     def __init__(self, tz: str | None = None) -> None:
         self._tz = tz  # IANA name (e.g. "Europe/Berlin"); None = host local time
         self._zone = ZoneInfo(tz) if tz else None
-        self._w: dict[Key, list[float]] = {}  # decayed event mass per hour
-        self._days: dict[Key, float] = {}  # decayed distinct-day mass (denominator)
+        self._w: dict[Key, list[float]] = {}  # decayed event mass per hour (rate numerator)
+        self._days: dict[Key, float] = {}  # decayed distinct-day mass (rate denominator)
         self._last: dict[Key, float] = {}  # last update, epoch seconds
         self._lastd: dict[Key, str] = {}  # ISO date of last observation (distinct-day gate)
+        # --- honest-probability stats (Phase B) ----------------------------------- #
+        # _present[key][h] = decayed count of DISTINCT days this key fired at hour h (at most
+        # +1 per day per hour). _present_today[key] gates that +1 within the current day.
+        self._present: dict[Key, list[float]] = {}
+        self._present_today: dict[Key, list[int]] = {}
+        # The GLOBAL active-day denominator: distinct days the home produced ANY perception.
+        # Shared across keys so a routine that STOPS still sees the denominator grow → its
+        # prob mean-reverts in days (FIX-2), and prob = present/global ≤ 1 always (FIX-1).
+        self._gdays: float = 0.0
+        self._glast: float | None = None
+        self._glastd: str | None = None
 
     def _dt(self, ts: float) -> datetime:
         """Local time in the pinned zone — so hour buckets are stable across hosts."""
@@ -74,27 +95,52 @@ class PatternModel:
         key = (event.topic, _zone(event))
         t = event.ts
         w = self._w.setdefault(key, [0.0] * HOURS)
+        present = self._present.setdefault(key, [0.0] * HOURS)
         d = self._factor(t - self._last.get(key, t))  # decay existing mass to event time
         for j in range(HOURS):
             w[j] *= d
+            present[j] *= d
         self._days[key] = self._days.get(key, 0.0) * d
         when = self._dt(t)
         today = when.date().isoformat()
-        if self._lastd.get(key) != today:  # denominator counts distinct days
+        if self._lastd.get(key) != today:  # rate denominator counts distinct OBSERVED days
             self._days[key] += 1.0
             self._lastd[key] = today
-        w[when.hour] += 1.0  # numerator counts every event
+            self._present_today[key] = []   # a new day: this key may add one presence/hour
+        w[when.hour] += 1.0  # rate numerator counts every event
+        if when.hour not in self._present_today.setdefault(key, []):
+            present[when.hour] += 1.0       # prob numerator: at most one present-day per hour
+            self._present_today[key].append(when.hour)
         self._last[key] = max(self._last.get(key, t), t)  # never move the clock backward
+        self._observe_global(t, today)
+
+    def _observe_global(self, t: float, today: str) -> None:
+        """Tick the shared active-day denominator: the home was alive today. Decayed to the
+        common clock so prob's denominator ages with the same half-life as its numerator."""
+        gd = self._factor(t - (self._glast if self._glast is not None else t))
+        self._gdays *= gd
+        if self._glastd != today:
+            self._gdays += 1.0
+            self._glastd = today
+        self._glast = max(self._glast, t) if self._glast is not None else t
 
     def expectation(self, topic: str, zone: str | None, when: float) -> Expectation:
         key = (topic, zone)
         if key not in self._w:
             return Expectation(rate=0.0, count=0.0, days=0.0, novel=True)
+        hour = self._dt(when).hour
         d = self._factor(when - self._last[key])  # decay a scratch copy; no mutation
-        count = self._w[key][self._dt(when).hour] * d
+        count = self._w[key][hour] * d
         days = self._days[key] * d
         rate = count / days if days > 0.0 else 0.0  # d cancels: a stopped pattern's rate holds
-        return Expectation(rate=rate, count=count, days=days, novel=False)
+        # The honest belief probability, on the GLOBAL active-day denominator (decayed to the
+        # same `when`). present ≤ global at every accrual and global ages no faster, so
+        # prob ∈ [0,1] by construction; clamp only as a floating-point guard.
+        present = self._present.get(key, [0.0] * HOURS)[hour] * d
+        gdays = self._gdays * self._factor(when - self._glast) if self._glast is not None else 0.0
+        prob = min(1.0, present / gdays) if gdays > 0.0 else 0.0
+        return Expectation(rate=rate, count=count, days=days, novel=False,
+                           prob=prob, gdays=gdays, firm=gdays >= NMIN_DAYS)
 
     def keys(self) -> list[Key]:
         """The (topic, zone) keys currently held. Pure read."""
@@ -113,22 +159,45 @@ class PatternModel:
         """Epoch of the most recent observation for `key` (its 'last seen')."""
         return self._last.get(key)
 
+    def belief(self, key: Key, now: float) -> dict | None:
+        """The single most reliable hour for `key` and the HONEST probability it fires then,
+        on the global active-day denominator. Pure read (a scratch decay, no mutation).
+        Returns None for an unknown/faded key or before any global evidence exists."""
+        if key not in self._w or self._glast is None:
+            return None
+        d = self._factor(now - self._last[key])
+        present = [x * d for x in self._present.get(key, [0.0] * HOURS)]
+        gdays = self._gdays * self._factor(now - self._glast)
+        if gdays <= 0.0 or not any(present):
+            return None
+        hour = max(range(HOURS), key=lambda h: present[h])
+        return {"hour": hour, "prob": min(1.0, present[hour] / gdays),
+                "gdays": gdays, "firm": gdays >= NMIN_DAYS}
+
     def decay(self, now: float) -> None:
         """Realize decay on every key to `now` and prune those that have faded
         away (→ novel again). Idempotent at a fixed `now`. Called nightly."""
         for key in list(self._w):
             d = self._factor(now - self._last[key])
             w = self._w[key]
+            present = self._present.get(key, [0.0] * HOURS)
             for j in range(HOURS):
                 w[j] = w[j] * d if w[j] * d >= EPS else 0.0
+                present[j] = present[j] * d if present[j] * d >= EPS else 0.0
             self._days[key] *= d
             self._last[key] = now
             if self._days[key] < EPS:
-                for store in (self._w, self._days, self._last, self._lastd):
+                for store in (self._w, self._days, self._last, self._lastd,
+                              self._present, self._present_today):
                     store.pop(key, None)
+        # Age the global denominator too — without this a quiet home's gdays would never fade
+        # and prob would understate a returning routine.
+        if self._glast is not None:
+            self._gdays *= self._factor(now - self._glast)
+            self._glast = now
 
     def snapshot(self) -> dict:
-        """Serialize to a JSON-safe v2 dict. Pure read — never decays or mutates."""
+        """Serialize to a JSON-safe v3 dict. Pure read — never decays or mutates."""
         keys = []
         for key, w in self._w.items():
             topic, zone = key
@@ -140,9 +209,15 @@ class PatternModel:
                     "days_mass": round(self._days[key], 6),
                     "last_update": self._last[key],
                     "last_obs_date": self._lastd.get(key),
+                    # Phase B: the presence numerator + the per-day hour gate, so a mid-day
+                    # restore does not double-count today's presence (determinism).
+                    "present": [round(x, 6) for x in self._present.get(key, [0.0] * HOURS)],
+                    "present_today": list(self._present_today.get(key, [])),
                 }
             )
-        return {"version": SNAPSHOT_VERSION, "hours": HOURS, "half_life_days": HALF_LIFE_DAYS, "tz": self._tz, "keys": keys}
+        return {"version": SNAPSHOT_VERSION, "hours": HOURS, "half_life_days": HALF_LIFE_DAYS,
+                "tz": self._tz, "keys": keys,
+                "global": {"days": round(self._gdays, 6), "last": self._glast, "last_date": self._glastd}}
 
     def restore(self, snap: dict) -> None:
         snap_tz = snap.get("tz")
@@ -151,8 +226,11 @@ class PatternModel:
         version = snap.get("version", 1)
         if version == 1:
             self._restore_v1(snap)
-        elif version == SNAPSHOT_VERSION:
+        elif version == 2:
             self._restore_v2(snap)
+            self._seed_global_from_legacy()
+        elif version == SNAPSHOT_VERSION:
+            self._restore_v3(snap)
         else:  # future format on an older binary — caller falls back to log replay
             raise ValueError(f"unknown snapshot version {version}")
 
@@ -169,6 +247,38 @@ class PatternModel:
             self._days[key] = days
             self._last[key] = last
             self._lastd[key] = k.get("last_obs_date")
+            # v2 has no presence numerator. Seed it best-effort and CAPPED at the day mass so
+            # prob ≤ 1 holds from the first read; it self-corrects as real events arrive.
+            self._present[key] = [min(x, days) for x in weights]
+            self._present_today[key] = []
+
+    def _restore_v3(self, snap: dict) -> None:
+        self._restore_v2(snap)  # the per-key weights/days/last carry over unchanged
+        for k in snap.get("keys", []):
+            key = (k["topic"], k["zone"])
+            if key not in self._w:
+                continue  # was skipped as non-finite
+            present = [float(x) for x in k.get("present", [0.0] * HOURS)]
+            if all(map(math.isfinite, present)):
+                self._present[key] = present
+            self._present_today[key] = [int(h) for h in k.get("present_today", [])]
+        g = snap.get("global", {})
+        gd, gl = g.get("days", 0.0), g.get("last")
+        if isinstance(gd, (int, float)) and math.isfinite(gd):
+            self._gdays = float(gd)
+        self._glast = float(gl) if isinstance(gl, (int, float)) and math.isfinite(gl) else None
+        self._glastd = g.get("last_date")
+
+    def _seed_global_from_legacy(self) -> None:
+        """Migrating a pre-Phase-B snapshot: there is no global active-day count. The most
+        active key's distinct-day mass is a sound lower bound on active days, so seed gdays
+        from it (anchored at the latest observation). prob then starts slightly HIGH and
+        relaxes toward truth as real days accrue — honest and rate-preserving enough."""
+        if not self._days:
+            return
+        self._gdays = max(self._days.values())
+        self._glast = max(self._last.values())
+        self._glastd = max((d for d in self._lastd.values() if d), default=None)
 
     def _restore_v1(self, snap: dict) -> None:
         """Migrate the old {counts:[24 ints], dates:[iso...]} shape forward,
@@ -243,6 +353,22 @@ class Remember:
                 last = lu if last is None else max(last, lu)
         peak = hours.index(max(hours)) if sum(hours) > 0.0 else None
         return {"hour": peak, "last_seen": last}
+
+    def beliefs(self, now: float, *, min_prob: float = 0.3) -> list[dict]:
+        """The plain, FIRM things Homie believes about the household — for the 'What Homie
+        Knows' page. One row per (topic, zone): its most reliable hour, the honest
+        probability, and the evidence behind it. Only FIRM beliefs (>= NMIN_DAYS of evidence)
+        above `min_prob` are returned, strongest first — a coincidence never shows as a fact.
+        """
+        rows = []
+        for key in self.model.keys():
+            b = self.model.belief(key, now)
+            if b is None or not b["firm"] or b["prob"] < min_prob:
+                continue
+            topic, zone = key
+            rows.append({"topic": topic, "zone": zone, **b})
+        rows.sort(key=lambda r: (-r["prob"], -r["gdays"], r["topic"], r["zone"] or ""))
+        return rows
 
     def snapshot(self) -> dict:
         """The current pattern of life, for the bus to persist during compaction."""

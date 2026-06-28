@@ -70,6 +70,7 @@ class RitualReport:
     compacted: bool = False
     decayed: bool = False
     l4_swept: int = 0
+    gist_folded: int = 0       # observations distilled into the GIST this night (slice 7)
     healed: list[str] = field(default_factory=list)
     health: dict[str, str] = field(default_factory=dict)
     aborted_disruptive: bool = False
@@ -85,11 +86,21 @@ async def consolidate(
     now: float,
     gates: RitualGates = RitualGates(),
     l4_sweep: Callable[[float], int] | Callable[[float], Awaitable[int]] | None = None,
+    gist_fold: Callable[[float], int] | None = None,
     changed: bool = False,
 ) -> RitualReport:
     """Run one consolidation pass and return what it did. Single-shot and
     re-entrant (a systemd oneshot invokes it); never restarts the process."""
     report = RitualReport(at=now)
+
+    # 1a. Distill the day into the GIST (slice 7) — BEFORE the raw tail is rotated away, so the
+    # day's events are still there to fold. The store writes its `.ddn` atomically; a failure
+    # here degrades to "no distill tonight", never aborts the consolidation.
+    if gist_fold is not None:
+        try:
+            report.gist_folded = int(gist_fold(now))
+        except Exception:
+            log.exception("ritual: GIST distill failed")
 
     # 1+4. Always-run, invisible: consolidate memory. Decay BEFORE the snapshot so the
     # persisted pattern of life is the aged one, then rotate the raw event tail away.

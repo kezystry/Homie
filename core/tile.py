@@ -150,9 +150,12 @@ class Context(Protocol):
 
     async def act(self, actuator: str, value) -> None: ...
     async def emit(self, event: Event) -> None: ...
-    async def speak(self, text: str) -> None: ...
+    async def speak(self, text: str, *, kind: str = "proactive") -> None: ...  # governed by the VoiceGate
     async def recall(self, topic: str, zone: str | None, when: float): ...  # Behavioral Analysis
     async def confirm(self, prompt: str, *, risk: str = "medium") -> bool: ...  # ask for a yes/no
+    @property
+    def can_confirm(self) -> bool: ...  # is an ask-channel wired? (offer vs act silently)
+    async def beliefs(self, when: float, *, min_prob: float = 0.3) -> list[dict]: ...  # firm routines
     def log(self, level: str, msg: str) -> None: ...
 
 
@@ -202,7 +205,8 @@ class TileContext:
     """Concrete Context. Enforces the manifest's actuator permissions, then
     forwards to runtime-provided sinks (so it stays decoupled and testable)."""
 
-    def __init__(self, manifest: Manifest, *, emit, act, speak, log_fn, recall=None, confirm=None) -> None:
+    def __init__(self, manifest: Manifest, *, emit, act, speak, log_fn, recall=None, confirm=None,
+                 beliefs=None) -> None:
         self.manifest = manifest
         self._emit = emit
         self._act = act
@@ -210,6 +214,7 @@ class TileContext:
         self._log = log_fn
         self._recall = recall
         self._confirm = confirm
+        self._beliefs = beliefs
 
     async def act(self, actuator: str, value) -> None:
         if actuator not in self.manifest.actuators:
@@ -220,14 +225,20 @@ class TileContext:
     async def emit(self, event: Event) -> None:
         await self._emit(event)
 
-    async def speak(self, text: str) -> None:
-        await self._speak(text)
+    async def speak(self, text: str, *, kind: str = "proactive") -> None:
+        await self._speak(text, kind=kind)
 
     async def recall(self, topic: str, zone: str | None, when: float):
         """Query the pattern of life (Behavioral Analysis) — what is normal here?"""
         if self._recall is None:
             raise RuntimeError("recall unavailable (no Remember wired into the Supervisor)")
         return await self._recall(topic, zone, when)
+
+    @property
+    def can_confirm(self) -> bool:
+        """Whether an ask-channel is wired. A tile that wants to OFFER (vs act silently)
+        checks this first, so it can fall back gracefully where no Consent is present."""
+        return self._confirm is not None
 
     async def confirm(self, prompt: str, *, risk: str = "medium") -> bool:
         """Ask the human a yes/no (answered by gesture or voice). Fails safe to
@@ -236,6 +247,13 @@ class TileContext:
         if self._confirm is None:
             raise RuntimeError("confirm unavailable (no Consent wired into the Supervisor)")
         return await self._confirm(prompt, risk=risk)
+
+    async def beliefs(self, when: float, *, min_prob: float = 0.3) -> list[dict]:
+        """The firm, plain things Homie believes about the household's routines (the 'What
+        Homie Knows' rows) — for the morning briefing. Empty when no Remember is wired."""
+        if self._beliefs is None:
+            return []
+        return await self._beliefs(when, min_prob=min_prob)
 
     def log(self, level: str, msg: str) -> None:
         self._log(level, msg)
@@ -831,23 +849,31 @@ class Supervisor:
                 payload["cap"] = self._caps.mint(name, actuator, level)
             await self.bus.publish(Event("actuator.requested", ref.at, payload, source=f"tile:{name}"))
 
-        async def speak(text: str) -> None:
-            await self.bus.publish(Event("interface.say", time.time(), {"text": text}, source=f"tile:{name}"))
+        async def speak(text: str, *, kind: str = "proactive") -> None:
+            # Emit a fact-to-say; the VoiceGate (core/voice.py) decides whether the owner
+            # actually hears it. `kind="safety"`/`"alert"` bypasses the speech budget.
+            await self.bus.publish(Event("interface.say", time.time(),
+                                         {"text": text, "kind": kind}, source=f"tile:{name}"))
 
         def log_fn(level: str, msg: str) -> None:
             log.log(getattr(logging, level.upper(), logging.INFO), msg)
 
         recall = None
+        beliefs = None
         if self.remember is not None:
             async def recall(topic: str, zone: str | None, when: float):
                 return await self.remember.normal(topic, zone, when)
+
+            async def beliefs(when: float, *, min_prob: float = 0.3):
+                return self.remember.beliefs(when, min_prob=min_prob)
 
         confirm = None
         if self.consent is not None:
             async def confirm(prompt: str, *, risk: str = "medium"):
                 return await self.consent.request(prompt, actuator=None, risk=risk)
 
-        return TileContext(manifest, emit=emit, act=act, speak=speak, log_fn=log_fn, recall=recall, confirm=confirm)
+        return TileContext(manifest, emit=emit, act=act, speak=speak, log_fn=log_fn,
+                           recall=recall, confirm=confirm, beliefs=beliefs)
 
     def status(self) -> dict[str, str]:
         return {name: rec.state for name, rec in self._tiles.items()}

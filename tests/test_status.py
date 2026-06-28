@@ -67,6 +67,19 @@ class RuntimeFactsTests(unittest.TestCase):
             rooms = {(l["room"], tuple(l["hours"])) for l in rt["lessons"]}
             self.assertEqual(rooms, {("kitchen", (19,)), ("den", (7, 23))})
 
+    def test_surfaces_the_recommendation_page(self) -> None:
+        from core.watchlog import WatchLog, WatchSession
+        with TemporaryDirectory() as d:
+            state = Path(d)
+            (state / "events.jsonl").write_text('{"a":1}\n', "utf-8")
+            wl = WatchLog(state / "watch.json")
+            for wk in range(3):
+                start = 1_750_000_000 + wk * 7 * 86400
+                wl.record(WatchSession.of("Dune", "film", "stremio", start, start + 5400))
+            rt = S.runtime_facts(state)
+            self.assertTrue(any("Dune" in line for line in rt["watch"]))   # picks surfaced
+            self.assertIn("watch", S.render_text(S.gather(state_dir=state)).lower())
+
     def test_surfaces_latest_serving_telemetry(self) -> None:
         with TemporaryDirectory() as d:
             state = Path(d)

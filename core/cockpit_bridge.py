@@ -54,8 +54,13 @@ class CockpitPolicy:
     # most one pattern (no duplicate forwarding). Deliberately excludes raw
     # perception internals and anything actuator-driving except the *done* echo.
     OUTBOUND = (
-        "interface.**",   # the brain's speech / things said to the human
-        "chat.**",        # chat replies routed back
+        "interface.spoken",  # GOVERNED speech the owner hears (raw interface.say is muzzled
+                             # internally by the VoiceGate; only the spoken channel renders)
+        "voice.**",          # mute/unmute state, so a UI can show "quiet for an hour"
+        "speech.deferred",   # lines held for the morning recap (a "you have N notes" hint)
+        "briefing.ready",    # the full morning surface (recap + day briefing) for the screen
+        "confirm.requested", # "are you sure?" questions — answered by a plain chat yes/no
+        "chat.**",           # chat replies routed back
         "security.**",    # alerts the owner should see
         "presence.**",    # who/what is around (no pixels — guarded)
         "motion.**",

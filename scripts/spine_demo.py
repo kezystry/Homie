@@ -73,7 +73,8 @@ async def main() -> None:
     async def show(e: Event) -> None:
         print(f"   -> {e.topic}: {e.payload}")
 
-    daemon.bus.subscribe("interface.say", show)
+    daemon.bus.subscribe("interface.spoken", show)   # what the owner actually hears (governed)
+    daemon.bus.subscribe("speech.deferred", show)    # held for the morning recap (muzzled)
     daemon.bus.subscribe("security.alert", show)
     daemon.bus.subscribe("actuator.done", show)
 

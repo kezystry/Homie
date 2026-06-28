@@ -38,8 +38,19 @@ def _llm_client():
     if not os.environ.get("HOMIE_LLM_URL"):
         print("homie: no HOMIE_LLM_URL — running the anchor floor (no cortex)", flush=True)
         return None
+    # Cortex is on — let the ACTIVE model profile (switchable general/dev brains, /model)
+    # override which endpoint+model it talks to. A plain HOMIE_LLM_URL with no profiles works
+    # as before.
+    from core.models import ModelRegistry
+    active = ModelRegistry.load(ROOT / "deploy" / "models.toml",
+                                state_path=STATE / "model.active").active()
+    if active:
+        os.environ["HOMIE_LLM_URL"] = active.url
+        os.environ["HOMIE_LLM_MODEL"] = active.model
+        print(f"homie: cortex up — {active.name} brain ({active.role}) -> {active.url}", flush=True)
+    else:
+        print(f"homie: reasoning cortex up against {os.environ['HOMIE_LLM_URL']}", flush=True)
     from deploy.llm import client_from_env  # lazy: keep the anchor dependency-free
-    print(f"homie: reasoning cortex up against {os.environ['HOMIE_LLM_URL']}", flush=True)
     return client_from_env()
 
 
@@ -50,6 +61,21 @@ def _perception():
     Unset = no live intake yet (events arrive via tests/mesh)."""
     name = os.environ.get("HOMIE_FAKE_PERCEPTION")
     if not name:
+        if os.environ.get("HOMIE_DESKTOP") == "1":
+            # On the desktop node: the eyes are the X11 DesktopAdapter (active app + media
+            # title/state via xdotool — facts, never frames). Feeds the WatchLog + GIST.
+            import subprocess
+            from core.perceive import Perceive
+            from perception.desktop_adapter import DesktopAdapter, XdotoolProbe
+
+            display = os.environ.get("HOMIE_DESKTOP_DISPLAY", ":0")
+            env = dict(os.environ, DISPLAY=display)
+
+            def run(args):
+                return subprocess.run(args, capture_output=True, text=True, env=env, timeout=3).stdout
+
+            print(f"homie: desktop eyes — xdotool on DISPLAY={display}", flush=True)
+            return Perceive(DesktopAdapter(XdotoolProbe(display=display, run=run, now=__import__("time").time)))
         return None
     from core.perceive import Perceive  # lazy: only the demo path needs these
     from core.scenarios import build
@@ -71,6 +97,21 @@ def _act_map() -> ActMap | None:
         return None
 
 
+def _shell_runner():
+    """Let owner-typed system /commands (/update, /restart, /reboot…) actually run — but ONLY
+    when HOMIE_SHELL_COMMANDS=1 (needs a polkit rule so the homie user may restart/reboot).
+    Off by default → those commands just reply with the command to paste."""
+    if os.environ.get("HOMIE_SHELL_COMMANDS") != "1":
+        return None
+    import subprocess
+
+    def run(argv: list) -> str:
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=600)
+        return (r.stdout or r.stderr or "").strip()[:2000]
+
+    return run
+
+
 async def main() -> None:
     STATE.mkdir(parents=True, exist_ok=True)
     from deploy.home import home_from_env  # the injected HomeClient (LoggingHome until HA lands)
@@ -82,6 +123,7 @@ async def main() -> None:
         cockpit_sock=os.environ.get("HOMIE_COCKPIT_SOCK", str(STATE / "cockpit.sock")),
         compact_threshold=int(os.environ.get("HOMIE_COMPACT_THRESHOLD", "5000")),
         compact_interval=float(os.environ.get("HOMIE_COMPACT_INTERVAL", "3600")),
+        shell_runner=_shell_runner(),
     )
     # Perception is one more injected seam: a synthetic scenario (HOMIE_FAKE_PERCEPTION)
     # today, the live MQTT/mesh adapter later — no rewiring, just a different source.
