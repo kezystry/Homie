@@ -11,7 +11,7 @@ it is injected into ``CommandLog`` (``core/act.py``) so the recorded command and
 inbound echo are both reduced to one hashable, comparable value. Both the in-process
 tiles and the real HA adapter must use this one function — never a private copy — so
 the two sides can never drift (the same discipline ``core/perceive.py`` follows by
-sharing the mesh ``PrivacyGuard.FORBIDDEN`` set).
+sharing the positive ``core/schema.py`` validator with the mesh guard).
 
 It normalizes UP to HA's integer units (0-255 brightness, mired) because those round
 stably; the lossy direction (255 -> percent) is never taken here.

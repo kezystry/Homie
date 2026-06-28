@@ -31,7 +31,7 @@ def parse_pull(returncode: int, stdout: str, stderr: str, before: str, after: st
 # allowlist, the desktop safe-verb set, or trust rungs is held for the owner's explicit yes —
 # EVEN IF the whole suite is green. Conservative substring match: over-flagging only ever asks.
 _AUTHORITY_HINTS = ("capability", "act_map", "cameras.toml", "egress", "allowlist",
-                    "never_touch", "trust", "core/desktop.py", "consent.py")
+                    "never_touch", "trust", "core/desktop.py", "consent.py", "core/schema.py")
 
 
 def authority_touched(changed_files) -> list[str]:

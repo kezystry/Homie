@@ -16,7 +16,7 @@ load-bearing, not cosmetic:
   publish EXACTLY ONE topic — `chat.message` (the user's typed line). It can never
   publish `actuator.requested`, `confirm.*`, or anything that drives the home. The
   allowlists are enforced server-side; a malicious client cannot widen them.
-- **Privacy still fences the boundary.** PrivacyGuard gates every event crossing
+- **Privacy still fences the boundary.** A recursive `ImageryFence` gates every event crossing
   the socket in both directions — so even though local rendering of camera frames
   is fine, a frame can never *ride this socket* (frames reach the cockpit straight
   from the local device, never via the bus).
@@ -35,7 +35,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from core.bus import _compile
-from core.mesh import PrivacyGuard
+from core.schema import ImageryFence
 from core.tile import Event
 
 log = logging.getLogger("homie.cockpit")
@@ -125,12 +125,15 @@ class CockpitBridge:
         *,
         path: str | Path = DEFAULT_SOCKET,
         policy: CockpitPolicy | None = None,
-        guard: PrivacyGuard | None = None,
+        guard: ImageryFence | None = None,
     ) -> None:
         self.bus = bus
         self.path = Path(path)
         self.policy = policy or CockpitPolicy()
-        self.guard = guard or PrivacyGuard()
+        # The cockpit surfaces the broad owner-facing stream to the owner's own screen, so it
+        # is fenced against raw imagery (recursively) rather than held to the narrow positive
+        # schema the mesh/perception use — its real authority is the CockpitPolicy allowlist.
+        self.guard = guard or ImageryFence()
         self._server: asyncio.AbstractServer | None = None
         self._clients: set[asyncio.StreamWriter] = set()
         self._subs: list = []

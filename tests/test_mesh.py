@@ -42,11 +42,15 @@ def ev(topic: str, **payload) -> Event:
 
 
 class GuardTests(unittest.TestCase):
-    def test_blocks_imagery_and_vectors(self) -> None:
+    def test_permits_only_declared_emittable(self) -> None:
         g = PrivacyGuard()
+        # a declared life-shape signal crosses
         self.assertTrue(g.permits(ev("presence.arrived", zone="kitchen")))
-        self.assertFalse(g.permits(ev("sensor.camera.frame")))
+        # an identity vector is refused — no field declares it, at any name or depth
         self.assertFalse(g.permits(ev("presence.unknown", vector=[1, 2, 3])))
+        self.assertFalse(g.permits(ev("presence.arrived", zone="k", data={"vector": [0.1, 0.2]})))
+        # an undeclared topic is refused fail-closed (positive schema, not a denylist)
+        self.assertFalse(g.permits(ev("sensor.camera.frame")))
         self.assertFalse(g.permits(ev("x.y", blob="z" * 5000)))
 
     def test_policy_default_deny(self) -> None:
@@ -105,20 +109,22 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
         await bus_b.aclose()
 
     async def test_privacy_blocks_meshed_but_forbidden(self) -> None:
-        # allow sensor.** so only the PrivacyGuard can stop a raw frame
+        # The default mesh allowlist (presence/motion/occupancy/security/node) is meshed; the
+        # positive schema then permits only the DECLARED shape — a vector-bearing event of an
+        # otherwise-meshed topic is refused, a clean life-shape signal crosses.
         bus_a, bus_b = Bus(), Bus()
         link_a, link_b = InMemoryLink.pair()
-        a = MeshBridge("a", bus_a, link_a, policy=MeshPolicy(("sensor.**",)))
-        b = MeshBridge("b", bus_b, link_b, policy=MeshPolicy(("sensor.**",)))
+        a = MeshBridge("a", bus_a, link_a)
+        b = MeshBridge("b", bus_b, link_b)
         await a.start()
         await b.start()
         got_b: list[Event] = []
-        bus_b.subscribe("sensor.**", collect(got_b))
-        await bus_a.publish(ev("sensor.camera.frame", data="x"))  # forbidden
-        await bus_a.publish(ev("sensor.temp", c=21))  # allowed
+        bus_b.subscribe("presence.**", collect(got_b))
+        await bus_a.publish(ev("presence.unknown", zone="back", faceprint=[1, 2, 3]))  # forbidden
+        await bus_a.publish(ev("presence.arrived", zone="kitchen"))  # allowed
         await bus_a.drain()
         await bus_b.drain()
-        self.assertEqual([e.topic for e in got_b], ["sensor.temp"])
+        self.assertEqual([e.topic for e in got_b], ["presence.arrived"])
         await bus_a.aclose()
         await bus_b.aclose()
 

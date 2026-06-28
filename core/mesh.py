@@ -5,8 +5,10 @@ tile subscribing to `presence.arrived` receives it whether it was published here
 or on the perception node. Three invariants:
 
 - **Default-deny** — only allowlisted topics cross the wire (MeshPolicy).
-- **Privacy** — raw imagery and faceprints never traverse the mesh, enforced
-  fail-closed at the boundary (PrivacyGuard), consistent with SECURITY.md.
+- **Privacy** — only events declared emittable by the positive schema
+  (`core/schema.py`) traverse the mesh, enforced fail-closed at the boundary
+  (PrivacyGuard → `schema.validate`), consistent with SECURITY.md. A faceprint or
+  frame has no declared home, so it is refused structurally at any nesting depth.
 - **No loops** — events carry (origin, seq); a node drops its own echoes and any
   frame it has already seen, and republished events are marked by origin so they
   are not re-forwarded.
@@ -24,6 +26,7 @@ from dataclasses import asdict, replace
 from typing import Awaitable, Callable, Protocol
 
 from core.bus import _compile
+from core.schema import validate
 from core.tile import Event
 
 log = logging.getLogger("homie.mesh")
@@ -50,22 +53,13 @@ class MeshPolicy:
 
 
 class PrivacyGuard:
-    """Fail-closed: raw imagery and faceprints never cross the mesh."""
-
-    FORBIDDEN = {"raw", "image", "frame", "vector", "faceprint", "crop"}
-
-    def __init__(self, max_bytes: int = 4096) -> None:
-        self.max_bytes = max_bytes
+    """Fail-closed: an event crosses the mesh only if it is declared emittable by the positive
+    schema (`core/schema.py`) — raw imagery, faceprints, and embeddings have no declared home,
+    so they are refused structurally at any nesting depth. Shares the validator with the
+    perception guard (`assert_emittable`), so the two enforcement points can never drift."""
 
     def permits(self, event: Event) -> bool:
-        if self.FORBIDDEN & set(event.topic.split(".")):
-            return False
-        if self.FORBIDDEN & set(event.payload):
-            return False
-        # a blob-sized payload is almost certainly imagery sneaking through
-        if sum(len(str(v)) for v in event.payload.values()) > self.max_bytes:
-            return False
-        return True
+        return not validate(event.topic, event.payload or {})
 
 
 class MeshBridge:
