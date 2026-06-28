@@ -46,7 +46,10 @@ async def main(entity: str, state: str, pct: int) -> None:
     if not url or not token:
         raise SystemExit("set HOMIE_HOME_URL + HOMIE_HOME_TOKEN (source /etc/homie-ha.env)")
     cmd = {"state": "off"} if state == "off" else {"state": "on", "brightness_pct": pct}
-    ha = HomeAssistantClient(lambda: WebSocketHAConnection(url), token)
+    # A sluggish hub (DIRIGERA) can take ~10s to confirm; wait generously so a working command
+    # isn't reported as a timeout. Tunable via HOMIE_HOME_RESULT_TIMEOUT.
+    timeout = float(os.environ.get("HOMIE_HOME_RESULT_TIMEOUT", "30"))
+    ha = HomeAssistantClient(lambda: WebSocketHAConnection(url), token, result_timeout=timeout)
     await ha.start()
     try:
         await asyncio.wait_for(ha.connected.wait(), 10)

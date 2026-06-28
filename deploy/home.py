@@ -43,8 +43,13 @@ def home_from_env():
     token = os.environ.get("HOMIE_HOME_TOKEN")
     if url and token:
         from core.ha import HomeAssistantClient, WebSocketHAConnection
-        log.info("home: Home Assistant adapter -> %s", url)
-        return HomeAssistantClient(lambda: WebSocketHAConnection(url), token)
+        # Some hubs (notably IKEA DIRIGERA's local API) confirm a command slowly — HA only
+        # acks the WebSocket call_service AFTER the device responds, which can take ~10s on a
+        # sluggish hub. Default the confirm timeout generously and let it be tuned by env, so a
+        # working-but-slow command isn't reported as a failure (HOMIE_HOME_RESULT_TIMEOUT).
+        timeout = float(os.environ.get("HOMIE_HOME_RESULT_TIMEOUT", "30"))
+        log.info("home: Home Assistant adapter -> %s (confirm timeout %.0fs)", url, timeout)
+        return HomeAssistantClient(lambda: WebSocketHAConnection(url), token, result_timeout=timeout)
     if url and not token:
         log.warning("HOMIE_HOME_URL=%s set but HOMIE_HOME_TOKEN missing; using LoggingHome "
                     "(no physical actuation). Create a long-lived token in HA and set it.", url)
