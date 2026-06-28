@@ -50,6 +50,7 @@ from core.friction_ledger import FrictionLedger
 from core.groundskeeper import Groundskeeper
 from core.ha_agenda import HAAgendaSource, HAWsQuery
 from core.mesh import Link, MeshBridge
+from core.models import ModelRegistry
 from core.reason import LLMClient, NullLLMClient, Reason
 from core.reconcile import StateReconciler
 from core.remember import Remember
@@ -308,8 +309,13 @@ def build_daemon(home, perception: Perception | None, *, config: DaemonConfig | 
     # path (it mints its own ("undo", actuator) handle — never a forged payload). Guarded
     # domains (locks/garage/alarm) route through Consent first; everything else is instant.
     undo = Undo(bus, ledger, registry, consent=consent)
-    # Owner-typed /commands in chat (/status, /now, /recommend, /mute, /private, /update, /reboot…).
-    slash_commands = SlashCommands(bus, state=config.state, runner=config.shell_runner, root=str(ROOT))
+    # Switchable brains: a general one + a fine-tuned dev one (deploy/models.toml). The active
+    # choice persists under the state dir; the cortex picks it up on (re)start.
+    models = ModelRegistry.load(ROOT / "deploy" / "models.toml",
+                                state_path=(Path(config.state) / "model.active") if config.state else None)
+    # Owner-typed /commands in chat (/status, /now, /recommend, /mute, /private, /model, /reboot…).
+    slash_commands = SlashCommands(bus, state=config.state, runner=config.shell_runner,
+                                   root=str(ROOT), models=models)
     sup = Supervisor(tiles_dir, bus, remember=remember, consent=consent,
                      state_root=config.state, registry=registry)
 

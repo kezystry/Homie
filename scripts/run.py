@@ -38,8 +38,19 @@ def _llm_client():
     if not os.environ.get("HOMIE_LLM_URL"):
         print("homie: no HOMIE_LLM_URL — running the anchor floor (no cortex)", flush=True)
         return None
+    # Cortex is on — let the ACTIVE model profile (switchable general/dev brains, /model)
+    # override which endpoint+model it talks to. A plain HOMIE_LLM_URL with no profiles works
+    # as before.
+    from core.models import ModelRegistry
+    active = ModelRegistry.load(ROOT / "deploy" / "models.toml",
+                                state_path=STATE / "model.active").active()
+    if active:
+        os.environ["HOMIE_LLM_URL"] = active.url
+        os.environ["HOMIE_LLM_MODEL"] = active.model
+        print(f"homie: cortex up — {active.name} brain ({active.role}) -> {active.url}", flush=True)
+    else:
+        print(f"homie: reasoning cortex up against {os.environ['HOMIE_LLM_URL']}", flush=True)
     from deploy.llm import client_from_env  # lazy: keep the anchor dependency-free
-    print(f"homie: reasoning cortex up against {os.environ['HOMIE_LLM_URL']}", flush=True)
     return client_from_env()
 
 

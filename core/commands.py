@@ -40,6 +40,7 @@ _HELP = [
     "  /recommend   — your picks & taste (the recommendation page)",
     "  /mute [min]  — quiet for a while   ·   /unmute",
     "  /private on|off — stop/allow watching your screen",
+    "  /model [name]— list the brains (general / dev) or switch to one",
     "  /update      — pull + health-check the latest version",
     "  /restart     — restart Homie   ·   /rebuild — apply OS changes",
     "  /reboot      — reboot the machine   ·   /rollback — undo the last update",
@@ -47,11 +48,13 @@ _HELP = [
 
 
 class SlashCommands:
-    def __init__(self, bus, *, state=None, runner=None, root: Path | str | None = None) -> None:
+    def __init__(self, bus, *, state=None, runner=None, root: Path | str | None = None,
+                 models=None) -> None:
         self.bus = bus
         self.state = Path(state) if state else None
         self._run = runner               # callable(list[str]) -> str ; None = reply with the command
         self.root = str(root) if root else "/opt/homie"
+        self.models = models             # ModelRegistry | None — the switchable brains
         self._sub = None
 
     async def start(self) -> None:
@@ -97,9 +100,26 @@ class SlashCommands:
             on = not (args and args[0].lower() in ("off", "false", "0"))
             await self.bus.publish(Event("media.private", ts, {"on": on}, source="commands"))
             return "Screen-private ON — I'm not watching your screen." if on else "Screen-private off."
+        if cmd in ("model", "brain"):
+            return self._model(args)
         if cmd in _SYSTEM:
             return self._system(cmd)
         return "Unknown command. Type /help for the list."
+
+    def _model(self, args: list[str]) -> str:
+        if self.models is None or not self.models.names():
+            return "No model profiles configured (cortex uses the single HOMIE_LLM_URL)."
+        if not args:
+            active = self.models.active()
+            lines = ["Brains (type /model <name> to switch):"]
+            for p in self.models.profiles():
+                mark = "→" if active and p.name == active.name else " "
+                lines.append(f"  {mark} {p.name} ({p.role}) — {p.note or p.url}")
+            return "\n".join(lines)
+        name = args[0]
+        if self.models.switch(name):
+            return f"Switched to the {name} brain. /restart to apply it to the running cortex."
+        return f"No brain called “{name}”. Type /model to list them."
 
     # -- read-only answers ---------------------------------------------------- #
     def _status(self) -> str:
