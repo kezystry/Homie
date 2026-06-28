@@ -15,6 +15,7 @@ from tempfile import TemporaryDirectory
 
 from core.act import Act, ActMap, CommandLog
 from core.bus import Bus
+from core.consent import Consent
 from core.tile import ActionRef, Event, FrictionSignal, Supervisor
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -189,6 +190,69 @@ class LightingTests(unittest.IsolatedAsyncioTestCase):
                     else:
                         os.environ[key] = val
             await bus.aclose()
+
+    async def _sup_consent(self, root: Path, *, answer: bool):
+        """A supervisor with a Consent gate that auto-answers every offer `answer`."""
+        shutil.copytree(ROOT / "tiles" / "lighting", root / "lighting")
+        bus = Bus()
+        consent = Consent(bus, timeout=5.0)
+        await consent.start()
+        sup = Supervisor(root, bus, consent=consent)
+        await sup.start("lighting")
+        acts: list[Event] = []
+        offers: list[Event] = []
+        bus.subscribe("actuator.requested", collect(acts))
+
+        async def auto_answer(e: Event) -> None:
+            offers.append(e)
+            await bus.publish(Event("confirm.response", e.ts, {"id": e.payload["id"], "yes": answer}))
+
+        bus.subscribe("confirm.requested", auto_answer)
+        return bus, sup, acts, offers, consent
+
+    async def test_dusk_offers_first_then_autos_after_yes(self) -> None:
+        # Owner's call: the FIRST dusk asks; after yes it's automatic, never asks again.
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            bus, sup, acts, offers, consent = await self._sup_consent(root, answer=True)
+            await bus.publish(Event("presence.arrived", at(21), {"zone": "living"}))
+            await bus.drain()
+            self.assertEqual(len(offers), 1)            # it asked the first time
+            self.assertEqual(len(acts), 1)              # ...and lit it on yes
+            await bus.publish(Event("presence.arrived", at(21, day=14), {"zone": "living"}))
+            await bus.drain()
+            self.assertEqual(len(offers), 1)            # the SECOND dusk does not ask again
+            self.assertEqual(len(acts), 2)              # ...just lights, automatically
+            await consent.stop(); await bus.aclose()
+
+    async def test_dusk_single_decline_offers_again_next_time(self) -> None:
+        # A single no (or missed answer) must not permanently disable dusk lighting.
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            bus, sup, acts, offers, consent = await self._sup_consent(root, answer=False)
+            await bus.publish(Event("presence.arrived", at(21), {"zone": "living"}))
+            await bus.drain()
+            self.assertEqual(len(offers), 1)
+            self.assertEqual(acts, [])                  # declined → no light
+            await bus.publish(Event("presence.arrived", at(21, day=14), {"zone": "living"}))
+            await bus.drain()
+            self.assertEqual(len(offers), 2)            # still willing to offer again
+            await consent.stop(); await bus.aclose()
+
+    async def test_dusk_repeated_decline_settles_and_stops_asking(self) -> None:
+        # After MAX_OFFERS declines, it settles on "no" and stops nagging (anti-nag).
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            bus, sup, acts, offers, consent = await self._sup_consent(root, answer=False)
+            for day in (13, 14):
+                await bus.publish(Event("presence.arrived", at(21, day=day), {"zone": "living"}))
+                await bus.drain()
+            self.assertEqual(len(offers), 2)            # asked MAX_OFFERS times
+            await bus.publish(Event("presence.arrived", at(21, day=15), {"zone": "living"}))
+            await bus.drain()
+            self.assertEqual(len(offers), 2)            # ...then never again
+            self.assertEqual(acts, [])                  # and never lights
+            await consent.stop(); await bus.aclose()
 
     async def test_security_request_outranks_ambient_light(self) -> None:
         with TemporaryDirectory() as d:

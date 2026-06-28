@@ -60,10 +60,17 @@ class GoldenLoopTests(unittest.TestCase):
                 await daemon.start()
                 daemon.bus.subscribe("actuator.done", lambda e: done.append(e))
 
-                # 1) evening arrival -> Lighting drives the bulb on (tiles + Act wired)
+                # Dusk now OFFERS the first time (offer-once-then-auto); the owner accepts,
+                # which both lights it now and makes it automatic thereafter.
+                async def accept(e: Event) -> None:
+                    await daemon.bus.publish(Event("confirm.response", e.ts,
+                                                   {"id": e.payload["id"], "yes": True}))
+                daemon.bus.subscribe("confirm.requested", accept)
+
+                # 1) evening arrival -> Lighting offers, owner says yes, bulb drives on
                 await daemon.bus.publish(Event("presence.arrived", at(21), {"zone": "living"}))
                 await daemon.bus.drain()
-                self.assertTrue(home.driven, "Lighting should drive the bulb on an after-dark arrival")
+                self.assertTrue(home.driven, "Lighting should drive the bulb on an accepted after-dark arrival")
                 entity, value = home.driven[-1]
                 self.assertEqual(entity, "light.lr")
 

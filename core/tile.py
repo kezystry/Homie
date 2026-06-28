@@ -153,6 +153,8 @@ class Context(Protocol):
     async def speak(self, text: str, *, kind: str = "proactive") -> None: ...  # governed by the VoiceGate
     async def recall(self, topic: str, zone: str | None, when: float): ...  # Behavioral Analysis
     async def confirm(self, prompt: str, *, risk: str = "medium") -> bool: ...  # ask for a yes/no
+    @property
+    def can_confirm(self) -> bool: ...  # is an ask-channel wired? (offer vs act silently)
     async def beliefs(self, when: float, *, min_prob: float = 0.3) -> list[dict]: ...  # firm routines
     def log(self, level: str, msg: str) -> None: ...
 
@@ -231,6 +233,12 @@ class TileContext:
         if self._recall is None:
             raise RuntimeError("recall unavailable (no Remember wired into the Supervisor)")
         return await self._recall(topic, zone, when)
+
+    @property
+    def can_confirm(self) -> bool:
+        """Whether an ask-channel is wired. A tile that wants to OFFER (vs act silently)
+        checks this first, so it can fall back gracefully where no Consent is present."""
+        return self._confirm is not None
 
     async def confirm(self, prompt: str, *, risk: str = "medium") -> bool:
         """Ask the human a yes/no (answered by gesture or voice). Fails safe to

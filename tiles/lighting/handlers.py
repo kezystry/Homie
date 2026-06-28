@@ -21,6 +21,7 @@ DARK_AFTER = 18  # fallback local hour: auto-light only between dusk...
 DARK_BEFORE = 7  # ...and dawn (used only when no HOMIE_LAT/HOMIE_LON is configured)
 OFF_WINDOW = 600.0  # seconds a room must stay empty before the light auto-offs
 NEVER_AUTO_ON = {"bedroom"}  # request-only rooms (sleeping != wanting the light on)
+MAX_OFFERS = 2  # offer-once-then-auto: ask at most this many times before settling on "no"
 
 # Zone -> actuator alias. Presence zones are short ("living"), but the home's actuator (and
 # the act-map) is "light.living_room" (C14). Decoupling here keeps zone names untouched
@@ -92,7 +93,35 @@ class Lighting(Tile):
         suppressed = self.state.get("suppressed", {}).get(room, [])
         if _hour(event.ts) in suppressed:
             return  # friction taught it not to auto-light this room at this hour
-        await ctx.act(_actuator(room), {"state": "on"})
+        await self._offer_or_auto(event, ctx, room)
+
+    async def _offer_or_auto(self, event: Event, ctx: Context, room: str) -> None:
+        """Offer-once-then-auto (the owner's call): the FIRST few dusks Homie ASKS before
+        lighting a room; once you say yes it's automatic forever after; a settled no is
+        respected. Where no ask-channel is wired (no Consent), it falls back to acting — it
+        can't offer what it can't ask."""
+        decision = self.state.get("auto_ok", {}).get(room)
+        if decision is False:
+            return                                   # settled: you don't want dusk light here
+        if decision is True or not ctx.can_confirm:
+            await ctx.act(_actuator(room), {"state": "on"})   # learned yes (or no way to ask)
+            return
+        # Never settled and we CAN ask → offer once.
+        yes = await ctx.confirm(f"Light the {room}? I'll do it automatically from now on.")
+        auto_ok = dict(self.state.get("auto_ok", {}))
+        if yes:
+            auto_ok[room] = True
+            await self.state.put("auto_ok", auto_ok)
+            await ctx.act(_actuator(room), {"state": "on"})
+            return
+        # No / no answer: count it. Settle to a firm "no" only after MAX_OFFERS, so a single
+        # missed offer never permanently disables dusk lighting for the room.
+        offers = dict(self.state.get("offers", {}))
+        offers[room] = offers.get(room, 0) + 1
+        await self.state.put("offers", offers)
+        if offers[room] >= MAX_OFFERS:
+            auto_ok[room] = False
+            await self.state.put("auto_ok", auto_ok)
 
     async def _maybe_off(self, event: Event, ctx: Context) -> None:
         room = event.payload.get("zone")
