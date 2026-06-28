@@ -16,11 +16,32 @@ import html
 import json
 import re
 import subprocess
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _beliefs_from_state(state: Path) -> list[str]:
+    """Rebuild the pattern of life from the durability log (the production bootstrap path)
+    and render the plain-language 'What Homie knows' lines. Best-effort and fully guarded —
+    a missing/odd state never breaks the status page."""
+    try:
+        from core.bus import Bus
+        from core.journal import what_homie_knows
+        from core.remember import Remember
+        log_path = state / "events.jsonl"
+        if not any(state.glob("events*.jsonl")) and not (state / "events.snapshot.json").exists():
+            return []
+        bus = Bus(log_path=log_path)
+        remember = Remember()
+        remember.bootstrap(bus)
+        rows = remember.beliefs(time.time())
+        return what_homie_knows(rows) if rows else []
+    except Exception:
+        return []
 
 # status word -> (emoji, css class) so the page and the parser agree on one vocabulary.
 _STATUS = {
@@ -189,6 +210,10 @@ def runtime_facts(state_dir: Path | None) -> dict:
             lessons.append({"tile": tile, "room": room, "hours": sorted(hours)})
     facts["lessons"] = lessons
 
+    # What Homie KNOWS (the Dream Journal page): plain-language firm beliefs about the
+    # household's routines, rebuilt from the log. Honest beliefs only (>= the evidence floor).
+    facts["knows"] = _beliefs_from_state(state)
+
     # Serving health (M6): the latest reason.served telemetry — how quick the brain was on
     # its last wake, the rolling p95, whether it met the SLO, and the GPU's warm state.
     served = _last_event_payload(state, "reason.served")
@@ -276,10 +301,17 @@ def render_html(facts: dict, *, live: bool = False, refresh: int = 10) -> str:
                 f'GPU <span class="muted">{_e(warm)}</span></p>')
         else:
             serving_html = ""
+        knows = rt.get("knows") or []
+        if knows:
+            kitems = "\n".join(f"<li>{_e(line)}</li>" for line in knows)
+            knows_html = f"<h3>What Homie knows about you</h3><ul class='lessons'>{kitems}</ul>"
+        else:
+            knows_html = ""
         runtime_html = (
             f'<p><b>{_e(ev.get("count", 0))}</b> events logged · last activity '
             f'<span class="muted">{_e(last)}</span></p>'
             f'{serving_html}'
+            f'{knows_html}'
             f'<h3>What Homie has learned</h3>{lessons_html}'
             f'<p class="muted tiny">{_e(rt.get("path",""))}</p>')
     else:
@@ -405,6 +437,11 @@ def render_text(facts: dict, *, color: bool = True, width: int = 64) -> str:
                 L.append(f"    · {l['tile']}: dark in the {c(l['room'], 'ok')} at {hrs}")
         else:
             L.append(c("    (no lessons learned yet)", "dim"))
+        knows = rt.get("knows") or []
+        if knows:
+            L.append(c("  what Homie knows about you:", "dim"))
+            for line in knows:
+                L.append(f"    · {line}")
     else:
         L.append(c(f"  daemon state not found — {rt.get('reason', '')}", "dim"))
 

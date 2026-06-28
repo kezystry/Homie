@@ -159,6 +159,21 @@ class PatternModel:
         """Epoch of the most recent observation for `key` (its 'last seen')."""
         return self._last.get(key)
 
+    def belief(self, key: Key, now: float) -> dict | None:
+        """The single most reliable hour for `key` and the HONEST probability it fires then,
+        on the global active-day denominator. Pure read (a scratch decay, no mutation).
+        Returns None for an unknown/faded key or before any global evidence exists."""
+        if key not in self._w or self._glast is None:
+            return None
+        d = self._factor(now - self._last[key])
+        present = [x * d for x in self._present.get(key, [0.0] * HOURS)]
+        gdays = self._gdays * self._factor(now - self._glast)
+        if gdays <= 0.0 or not any(present):
+            return None
+        hour = max(range(HOURS), key=lambda h: present[h])
+        return {"hour": hour, "prob": min(1.0, present[hour] / gdays),
+                "gdays": gdays, "firm": gdays >= NMIN_DAYS}
+
     def decay(self, now: float) -> None:
         """Realize decay on every key to `now` and prune those that have faded
         away (→ novel again). Idempotent at a fixed `now`. Called nightly."""
@@ -338,6 +353,22 @@ class Remember:
                 last = lu if last is None else max(last, lu)
         peak = hours.index(max(hours)) if sum(hours) > 0.0 else None
         return {"hour": peak, "last_seen": last}
+
+    def beliefs(self, now: float, *, min_prob: float = 0.3) -> list[dict]:
+        """The plain, FIRM things Homie believes about the household — for the 'What Homie
+        Knows' page. One row per (topic, zone): its most reliable hour, the honest
+        probability, and the evidence behind it. Only FIRM beliefs (>= NMIN_DAYS of evidence)
+        above `min_prob` are returned, strongest first — a coincidence never shows as a fact.
+        """
+        rows = []
+        for key in self.model.keys():
+            b = self.model.belief(key, now)
+            if b is None or not b["firm"] or b["prob"] < min_prob:
+                continue
+            topic, zone = key
+            rows.append({"topic": topic, "zone": zone, **b})
+        rows.sort(key=lambda r: (-r["prob"], -r["gdays"], r["topic"], r["zone"] or ""))
+        return rows
 
     def snapshot(self) -> dict:
         """The current pattern of life, for the bus to persist during compaction."""

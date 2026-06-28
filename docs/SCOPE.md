@@ -38,6 +38,13 @@ This is the *whole* near-term build. Everything else is deferred.
 4. **The "What Homie Knows" page + `memory.overlay`** — plain rows from the GIST brief, each
    with a confidence word + provenance ("from 32 days" vs "from 3 days"), three one-tap
    actions ([that's me] / [not quite] / [lock]).
+   - ✅ **The read-only page shipped:** `core/journal.py` renders `Remember.beliefs()` (firm,
+     above-floor beliefs only) as plain sentences with a calibrated confidence WORD + a
+     provenance chip; honest-empty before it has learned; never leaks an internal event name.
+     Surfaced on the status page (`scripts/status.py --text`, the SSH-from-phone path) in text
+     and HTML. Tests in `tests/test_journal.py`.
+   - ⏳ **Correction (`memory.overlay` + the three one-tap actions) pending** — the next slice
+     (it needs the cockpit write-path, not just a read render).
 5. **One-key undo + the Friction Ledger pane** — every act a selectable plain-sentence row,
    reversed in one keystroke via the capability inverse-act path.
 6. **Lights + climate autonomy** — silent action *after a clean record*, the owner's chosen

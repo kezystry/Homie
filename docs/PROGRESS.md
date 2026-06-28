@@ -42,6 +42,8 @@ M4   ✅ shipped   The hour-shaped lesson, spoken back
 M5   ✅ shipped   Capability-gated act path — no faked commands (closes C2/C14)
 M6   ✅ shipped   8B-on-3060 serving discipline — latency SLO, warm/cold, tool grammar
 PA   ✅ shipped   Phase A — SpeechBudget muzzle: one global cap on owner-facing speech (anti-nag)
+PB   ✅ core      Phase B — honest beliefs: prob∈[0,1] + mean-revert + nmin (fixes the >1.0 bug)
+PC   🔄 building  Phase C — first win: "What Homie Knows" page shipped (read); recap + correction next
 M7   ⏳ planned    Positive-schema privacy guard + Dream Journal (retrieval)
 M8   ⏳ planned    Friction Ledger pane + one-key undo
 M9   ⏳ planned    Deploy posture + confinement
