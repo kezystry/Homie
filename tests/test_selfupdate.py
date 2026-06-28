@@ -48,10 +48,50 @@ class DecideTests(unittest.TestCase):
         self.assertTrue(safe)
         self.assertIn("297", msg)
 
-    def test_changed_and_red_is_unsafe_with_rollback_hint(self) -> None:
-        safe, msg = selfupdate.decide({"ok": True, "changed": True}, {"ran": True, "ok": False, "count": 297})
+    def test_changed_and_red_is_unsafe_and_rolls_back(self) -> None:
+        pull, tests = {"ok": True, "changed": True}, {"ran": True, "ok": False, "count": 297}
+        safe, msg = selfupdate.decide(pull, tests)
         self.assertFalse(safe)
-        self.assertIn("reset --hard", msg)
+        self.assertIn("rolling back", msg.lower())
+        self.assertTrue(selfupdate.should_rollback(pull, tests))
+
+
+class AuthorityGuardTests(unittest.TestCase):
+    def test_authority_touched_flags_sensitive_paths(self) -> None:
+        touched = selfupdate.authority_touched(
+            ["core/voice.py", "deploy/act_map.toml", "tiles/desktop/handlers.py", "core/capability.py"])
+        self.assertIn("deploy/act_map.toml", touched)
+        self.assertIn("core/capability.py", touched)
+        self.assertNotIn("core/voice.py", touched)            # ordinary code is fine
+
+    def test_green_but_authority_change_is_held_not_applied(self) -> None:
+        safe, msg = selfupdate.decide(
+            {"ok": True, "changed": True}, {"ran": True, "ok": True, "count": 600},
+            changed_files=["core/capability.py"])
+        self.assertFalse(safe)                                 # green, yet NOT auto-applied
+        self.assertIn("explicit yes", msg)
+        # an authority hold is NOT a rollback — the code is healthy, it just waits for the owner
+        self.assertFalse(selfupdate.should_rollback(
+            {"ok": True, "changed": True}, {"ran": True, "ok": True, "count": 600},
+            ["core/capability.py"]))
+
+    def test_green_ordinary_change_applies(self) -> None:
+        safe, _ = selfupdate.decide(
+            {"ok": True, "changed": True}, {"ran": True, "ok": True, "count": 600},
+            changed_files=["core/journal.py", "docs/PROGRESS.md"])
+        self.assertTrue(safe)
+
+
+class ChangelogTests(unittest.TestCase):
+    def test_changelog_line_records_the_verdict(self) -> None:
+        applied = selfupdate.changelog_line(
+            {"ok": True, "changed": True, "summary": "a → b"},
+            {"ran": True, "ok": True, "count": 600}, True, "healthy", when="2026-06-29")
+        self.assertIn("applied", applied)
+        rolled = selfupdate.changelog_line(
+            {"ok": True, "changed": True, "summary": "a → c"},
+            {"ran": True, "ok": False, "count": 600}, False, "failed", when="2026-06-29")
+        self.assertIn("rolled-back", rolled)
 
 
 class FormatTests(unittest.TestCase):
