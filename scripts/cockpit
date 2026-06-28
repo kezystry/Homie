@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Open the Homie cockpit from ANY directory — no cd, no PYTHONPATH needed.
+#   /opt/homie/scripts/cockpit            # default socket
+#   /opt/homie/scripts/cockpit /path.sock # explicit socket
+cd "$(dirname "$0")/.." && exec python3 -m cockpit "$@"
