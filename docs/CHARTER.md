@@ -38,6 +38,16 @@ not just believed. Status tags: ✅ built · 🔜 committed-next · 🅿️ comm
    immutable CHARTER module the personality cannot edit.
 8. **Always obey the owner; a real character comes later.** A hard obedience floor independent of
    any learned tone. Mum's safety may override only in a genuine emergency. ✅ stance.
+8a. **The self-modification invariant** — Homie may change its own *code, state, and beliefs* in the
+    background, but **never its own authority.** Every self-change MUST be **(1) health-gated** (takes
+    effect only after the full test suite passes, plus a post-restart health re-check), **(2)
+    reversible** (a known-good prior — `last_good` commit / prior snapshot — is recorded first and
+    auto-restored on any failure), **(3) authority-frozen** (it may not widen any capability grant,
+    device/zone/egress allowlist, or trust rung; a diff touching those fails the gate and waits for the
+    owner's yes, even if green), **(4) human-gated when irreversible** (a wipe, a forget-everywhere, a
+    money/lock act is never self-initiated), and **(5) audited** (every self-change is written to an
+    owner-readable changelog). *This is what lets a self-improving system stay safe — homeostasis, not
+    autonomy.* 🅿️ (M11) — `core/selfupdate.py`, `scripts/update.py`.
 
 ## II · Architecture invariants (must always hold)
 
@@ -54,6 +64,13 @@ not just believed. Status tags: ✅ built · 🔜 committed-next · 🅿️ comm
     `core/remember.py`, `core/wake_ledger.py`, `core/speech_budget.py`.
 13. **Tested code IS the shipped code.** A milestone is "done" only when its named acceptance
     test passes. ✅ `tests/`.
+13a. **Extreme compatibility is a first-class goal** (owner's core ask). One declarative OS image runs
+     on every node — the always-on mini-PC, the Pi floor, the GPU desktop — so a part built on one
+     runs on all. Python 3.11 + **standard library where feasible** (few/no third-party deps to break),
+     same NixOS config, same `build_daemon` graph everywhere. The always-on **system cycle** (nightly
+     heal/upgrade) and **developer mode** both run on the always-on node. New code must stay
+     drop-in-compatible across nodes; a dependency that breaks one node's parity is the wrong choice. ✅
+     stance — `os/`, stdlib discipline.
 
 ## III · Must-exist features (these ARE Homie — built or committed, never cut)
 
@@ -81,10 +98,30 @@ capabilities that define it. Sequencing is the roadmap's job; existence is non-n
 **Memory & control:**
 22. **Distilled cross-day memory** (live day = full; next day = GIST) reaching years as wisdom; a
     nightly "what changed/improved" note. 🔜🅿️.
-23. **Pin & forget** — make something stick forever or erase it everywhere (backups, logs, summaries). 🔜.
-24. **Full timeline undo** + a **real yes/no confirm** — every act reversible in one keystroke. 🔜 (Phase D).
+22a. **Slow, earned, silent memory growth** (owner's call: *"richtig langsam und silent, smooth"*).
+     Homie gets smarter by **forgetting noise faster and keeping *proven* patterns longer** — never by
+     hoarding bytes. Retention grows **per-pattern, on earned evidence** (a key's half-life lengthens
+     only with sustained presence, log-slow, 30 days → **capped at 1 year**; never globally, never for a
+     one-off). Growth is **nightly and invisible** — no announcement, it just runs smoother over weeks.
+     Absence-counting must always pair with longer retention so a stopped routine still fades fast
+     (anti-fossilization). 🔜 — `core/remember.py`, `core/gist.py`, `core/ritual.py`.
+23. **Pin & forget** — make something stick forever or erase it everywhere (backups, logs, summaries).
+    A forget leaves an **honest, contentless trace** (that one happened, never what). 🔜.
+23a. **The owner's self-gallery** — Homie may keep occasional **photos of the owner himself**, but only
+     ones he **explicitly pins** ("remember this"), **never autonomously captured**; on-device (the Pi
+     edge) only, encrypted, bounded count, one-tap wipe. Every kept image shows on the "What Homie
+     Knows" page and is discardable in one tap. *Autonomous photo retention is forbidden — a kept image
+     is always an explicit owner act.* 🅿️ — extends law 6.
+24. **Full timeline undo** + a **real yes/no confirm** — every act reversible in one keystroke. ✅ (Phase D).
 25. **Master controls** — a full **off switch**, a one-tap **guest mode**, and **per-person
     privacy** (control what's recorded/visible per person). 🅿️.
+25a. **The informed-consent storage policy** (owner's deliberate decision; he is the data controller and
+     takes responsibility). Default for any non-owner person is **store nothing**. Homie may learn or
+     recognize other people (derived facts, or on-device **vector-only** faceprints — never a photo
+     album of them) **only while the owner has marked that present people are informed**; otherwise guest
+     mode is effectively on and nothing about them is stored. The owner informs people; that is his
+     responsibility. **The hard red lines still bind even him:** no off-property / public-space capture
+     (law 4 + Ryneš), no outward identification of anyone, raw frames die at the edge (law 6). 🅿️.
 
 **Autonomy & trust:**
 26. The **earned-autonomy ladder** — tight leash → trusted solo (lights+climate first); **money &
@@ -96,6 +133,18 @@ capabilities that define it. Sequencing is the roadmap's job; existence is non-n
 28. **Nightly self-renewal** — tidy + heal + a **gated self-upgrade** (owner-signed → sandbox →
     atomic switch → auto-rollback → changelog). Bold but never self-grants device power or egress;
     **signing key owner-held only.** 🅿️ (M11).
+28a. **Self-sufficient by construction** (owner's fixed rule: *self-healing · self-sustaining ·
+     self-upgrading · self-improving · self-getting-smarter*), each bound by law 8a's invariant:
+     • **self-healing** — liveness watchdog + crash-loop ceiling + corrupted-state fallback (a hung or
+       broken daemon recovers or boots honest-empty + says so; never a silent boot loop);
+     • **self-sustaining** — disk/log hygiene with a never-evicted floor; reconnect-with-backoff on every
+       external link (`core/groundskeeper.py` — the storage limb, silent, acts only under real pressure);
+     • **self-upgrading** — the health-gated, auto-rolling-back nightly pull (28); updates may come **from
+       the internet, but only from vetted/secure sources, and our code stays protected** (owner's call);
+     • **self-improving / smarter** — the Pi floor learns continuously (beliefs only, reversible, fades);
+       heavy finetune is **episodic, rare, on the desktop, evidence-gated** — never a silent drift.
+     The aliveness is *real and honestly reported* ("I got a little better at the evening lights this
+     week"), never dramatized and never self-granting power. 🅿️ (M11).
 
 **Reach, voice, business:**
 29. **Voice** — wake-word ("Homie") + best local voice; + all other inputs (screen, type, "it just

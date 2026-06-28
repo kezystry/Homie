@@ -46,6 +46,7 @@ from core.cockpit_bridge import CockpitBridge
 from core.confirm_responder import ConfirmResponder
 from core.consent import Consent
 from core.friction_ledger import FrictionLedger
+from core.groundskeeper import Groundskeeper
 from core.ha_agenda import HAAgendaSource, HAWsQuery
 from core.mesh import Link, MeshBridge
 from core.reason import LLMClient, NullLLMClient, Reason
@@ -108,7 +109,7 @@ class Daemon:
 
     def __init__(self, *, bus, remember, consent, confirm, ledger, undo, sup, act, reconciler, reason,
                  voice, anchor, cockpit, mesh, clock, home, perception, config: DaemonConfig,
-                 ha_agenda=None) -> None:
+                 ha_agenda=None, groundskeeper=None) -> None:
         self.bus = bus
         self.remember = remember
         self.consent = consent
@@ -127,6 +128,7 @@ class Daemon:
         self.home = home
         self.perception = perception
         self.ha_agenda = ha_agenda    # live HA calendar/to-do/weather feed (None if not configured)
+        self.groundskeeper = groundskeeper  # storage limb (None for in-memory test graphs)
         self.config = config
         self._tasks: list[asyncio.Task] = []
         self.started = False
@@ -205,6 +207,10 @@ class Daemon:
                     last_ritual = now
                 else:
                     await self.bus.maybe_compact(self.remember.snapshot)
+                # The storage limb runs every cycle: a cheap disk read, silent densify under
+                # pressure, a notice only when almost full. Never raises into the loop.
+                if self.groundskeeper is not None:
+                    await self.groundskeeper.tick(now)
             except asyncio.CancelledError:
                 raise
             except Exception:
@@ -296,6 +302,10 @@ def build_daemon(home, perception: Perception | None, *, config: DaemonConfig | 
     mesh = MeshBridge(config.node_id, bus, config.mesh_link) if config.mesh_link is not None else None
     clock = Clock(bus, now=config.now, tick_seconds=config.tick_seconds, morning_hour=config.morning_hour)
 
+    # The storage limb (Charter 28a): silent densify under pressure, a notice only when almost
+    # full. Built only when there is a real on-disk state dir; in-memory test graphs skip it.
+    groundskeeper = Groundskeeper(config.state, bus, remember.snapshot) if config.state is not None else None
+
     # The live morning feed: real HA calendar/to-do/weather → agenda.external, folded by the
     # Personal tile into the briefing. Wired ONLY when the home can answer queries (a real HA
     # client exposes `request`) and at least one entity is configured — otherwise the briefing
@@ -313,4 +323,4 @@ def build_daemon(home, perception: Perception | None, *, config: DaemonConfig | 
     return Daemon(bus=bus, remember=remember, consent=consent, confirm=confirm, ledger=ledger, undo=undo, sup=sup, act=act,
                   reconciler=reconciler, reason=reason, voice=voice, anchor=anchor,
                   cockpit=cockpit, mesh=mesh, clock=clock, home=home, perception=perception, ha_agenda=ha_agenda,
-                  config=config)
+                  groundskeeper=groundskeeper, config=config)

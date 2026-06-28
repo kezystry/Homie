@@ -30,11 +30,11 @@
 - **Code:** `core/` (`bus`, `remember` (now with honest `prob`/`firm` beliefs), `tile`
   runtime + channels, `clock`, `mesh`, `act` + `capability`, `reason` (cortex) + `serving`,
   `reconcile`, `consent`, `confirm_responder`, `friction_ledger` + `undo` (one-tap reversal),
-  `canonical`, `ritual`, `gist`; the anti-nag waist `voice` +
+  `groundskeeper` (silent storage hygiene), `canonical`, `ritual`, `gist`; the anti-nag waist `voice` +
   `speech_budget`; the morning surface `journal` + `recap` + `agenda` + `briefing` + `route`;
   the HA hand `ha` + `ws` + `ha_discovery`; the eyes `camera` (registry + zone-allowlist +
   go2rtc/Frigate config-gen)), `perception/` (`frigate_adapter` — frames die at the edge),
-  `tiles/` (`personal`, `security`, `lighting`), `tests/` (519 passing), `scripts/` (`run.py`
+  `tiles/` (`personal`, `security`, `lighting`), `tests/` (529 passing), `scripts/` (`run.py`
   daemon, `ha_setup.py`, `ha_light.py`, `camera_setup.py`, `spine_demo.py`, `status.py`).
 - **Importable notes:** `obsidian/` is a cross-linked Obsidian vault mirroring the docs.
 
