@@ -1,0 +1,6 @@
+# Off-limits zones — Charter law 4: never learned, never distilled, never rendered.
+# One zone name per line; everything after a '#' is a comment. Unioned with $HOMIE_OFF_ZONES.
+#
+# Currently EMPTY: the owner runs one camera in the main room and has no off-limits zone.
+# If that changes, add the zone name here (it must match the zone label perception emits), e.g.:
+#   mum_flat

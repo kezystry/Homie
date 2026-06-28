@@ -36,9 +36,10 @@ class DesktopExecutor:
         "stop":       ["key", "--clearmodifiers", "Escape"],
     }
 
-    def __init__(self, *, run=None, display: str = ":0") -> None:
+    def __init__(self, *, run=None) -> None:
         self._run = run            # injected fixed-argv runner (set up in deploy); None = no-op
-        self.display = display
+        # NB: the X11 DISPLAY is set on the injected runner's environment in deploy/home.py
+        # (_xdotool_env → HOMIE_DESKTOP_DISPLAY); the executor never needs it directly.
         self.driven: list[str] = []   # verbs issued (telemetry / tests)
 
     def handles(self, entity_id: object) -> bool:

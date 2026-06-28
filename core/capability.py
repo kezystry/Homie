@@ -22,8 +22,11 @@ act-map + never_touch remains the hard outer boundary, checked AFTER resolution.
 """
 from __future__ import annotations
 
+import logging
 import secrets
 from dataclasses import dataclass
+
+log = logging.getLogger("homie.capability")
 
 
 @dataclass(frozen=True)
@@ -53,6 +56,14 @@ class CapabilityRegistry:
             handle = secrets.token_hex(16)  # 128-bit, opaque, unstructured
             self._by_id[handle] = Capability(tile, actuator, priority)
             self._by_key[key] = handle
+        else:
+            # The handle BINDS the priority captured at first mint (the manifest-derived one).
+            # A re-mint with a different priority must NOT silently take effect — that would let
+            # a later call drift a tile's authority. Keep the bound priority and warn loudly.
+            bound = self._by_id[handle].priority
+            if bound != priority:
+                log.warning("capability: re-mint of (%s, %s) at priority %r ignored — handle is "
+                            "bound to %r", tile, actuator, priority, bound)
         return handle
 
     def resolve(self, handle: object) -> Capability | None:

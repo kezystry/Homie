@@ -34,6 +34,7 @@ log = logging.getLogger("homie.route")
 
 ROOT = Path(__file__).resolve().parents[1]
 HOME = "home"  # the origin and assumed return point of every loop
+DEFAULT_AT_SECONDS = 3600.0  # assumed length of a timed item that carries no explicit end (1h)
 
 
 @dataclass(frozen=True)
@@ -103,7 +104,9 @@ def sequence(items: list[AgendaItem], now: float, *,
 
     conflicts = []
     for a, b in zip(fixed, fixed[1:]):
-        a_end = a.when.end if a.when.end is not None else a.when.start
+        # A timed item with no explicit end isn't zero-length — assume a sensible default window
+        # so a 14:00 (no-end) appointment is still seen to collide with a 14:30 one.
+        a_end = a.when.end if a.when.end is not None else a.when.start + DEFAULT_AT_SECONDS
         if b.when.start < a_end:
             conflicts.append(f"{a.title} and {b.title} overlap — can't do both")
 

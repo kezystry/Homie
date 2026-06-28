@@ -32,6 +32,28 @@ from core.daemon import DaemonConfig, build_daemon  # noqa: E402
 STATE = Path(os.environ.get("HOMIE_STATE", "/var/lib/homie"))
 
 
+def _off_zones() -> frozenset:
+    """Off-limits zones (Charter law 4) from BOTH sources, unioned: the env var
+    HOMIE_OFF_ZONES (comma-separated) and deploy/off_zones.txt (one per line, # comments).
+    Empty by default — the owner currently has no off-limits zone (one camera, main room)."""
+    zones: set[str] = set()
+    for part in (os.environ.get("HOMIE_OFF_ZONES", "") or "").split(","):
+        z = part.strip()
+        if z:
+            zones.add(z)
+    path = ROOT / "deploy" / "off_zones.txt"
+    try:
+        for line in path.read_text("utf-8").splitlines():
+            z = line.split("#", 1)[0].strip()
+            if z:
+                zones.add(z)
+    except FileNotFoundError:
+        pass
+    if zones:
+        log.info("off-limits zones (never learned/distilled): %s", ", ".join(sorted(zones)))
+    return frozenset(zones)
+
+
 def _llm_client():
     """The reasoning cortex client, iff HOMIE_LLM_URL is set. deploy.llm is imported
     lazily so the anchor (no URL) never even imports the network path."""
@@ -124,6 +146,7 @@ async def main() -> None:
         compact_threshold=int(os.environ.get("HOMIE_COMPACT_THRESHOLD", "5000")),
         compact_interval=float(os.environ.get("HOMIE_COMPACT_INTERVAL", "3600")),
         shell_runner=_shell_runner(),
+        off_zones=_off_zones(),
     )
     # Perception is one more injected seam: a synthetic scenario (HOMIE_FAKE_PERCEPTION)
     # today, the live MQTT/mesh adapter later — no rewiring, just a different source.

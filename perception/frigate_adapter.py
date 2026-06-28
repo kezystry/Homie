@@ -18,6 +18,7 @@ not sixty per second. Dedup is keyed on `(object_id, zone)` and bounded.
 from __future__ import annotations
 
 import logging
+from collections import OrderedDict
 from typing import AsyncIterator, Protocol
 
 from core.camera import CameraRegistry
@@ -63,7 +64,10 @@ class FrigateAdapter:
     def __init__(self, stream: FrigateEventStream, registry: CameraRegistry) -> None:
         self.stream = stream
         self.registry = registry
-        self._seen: set[tuple[str, str]] = set()
+        # (object_id, zone) seen-set, LRU-bounded: an entry is the proof we already announced
+        # this object entering this zone. Insertion-ordered so we evict the OLDEST when full —
+        # never a wholesale flush (which would let a still-present object re-announce as new).
+        self._seen: "OrderedDict[tuple[str, str], None]" = OrderedDict()
 
     async def events(self) -> AsyncIterator[Event]:
         async for detection in self.stream.detections():
@@ -102,6 +106,7 @@ class FrigateAdapter:
         return out
 
     def _remember(self, key: tuple[str, str]) -> None:
-        if len(self._seen) >= _DEDUP_MAX:
-            self._seen.clear()                # crude bound; a re-announce after a flush is harmless
-        self._seen.add(key)
+        self._seen[key] = None
+        self._seen.move_to_end(key)           # most-recently announced
+        while len(self._seen) > _DEDUP_MAX:
+            self._seen.popitem(last=False)    # evict the OLDEST entry, never flush the whole set

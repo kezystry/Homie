@@ -58,7 +58,10 @@ class Undo:
         self.guarded = frozenset(guarded_domains)
         self.priority = priority
         self._scan = scan                       # how far back "undo the last thing" looks
-        self._pending: dict[str, int] = {}      # actuator -> original row id awaiting its echo
+        # actuator -> FIFO queue of row ids awaiting their echo. A QUEUE (not a single slot) so
+        # two undos racing on the SAME actuator both get marked undone, in order, rather than the
+        # second silently overwriting the first (which left the home and the ledger disagreeing).
+        self._pending: dict[str, list[int]] = {}
         self._subs: list = []
 
     async def start(self) -> None:
@@ -119,13 +122,16 @@ class Undo:
         # Re-drive the prior value through the capability-gated act path. Mint our own handle
         # (trusted core) — never a forged payload actuator. The act-map still has final say.
         cap = self.registry.mint("undo", actuator, self.priority)
-        self._pending[actuator] = action.id
+        self._pending.setdefault(actuator, []).append(action.id)
         await self.bus.publish(Event(ACTUATOR_REQUESTED, event.ts,
                                      {"cap": cap, "value": prior}, source="undo"))
 
     async def _on_done(self, event: Event) -> None:
         actuator = event.payload.get("actuator")
-        aid = self._pending.pop(actuator, None) if actuator else None
+        queue = self._pending.get(actuator) if actuator else None
+        aid = queue.pop(0) if queue else None   # FIFO: oldest pending re-drive on this actuator
+        if not queue:
+            self._pending.pop(actuator, None)   # tidy up an emptied queue
         if aid is None:
             return                              # not one of our re-drives
         action = self.ledger.get(aid)

@@ -108,11 +108,13 @@
         # Pin the home's timezone so Remember's hour-of-day buckets and the tiles all
         # agree on "what hour is it" (second-review N7). Change this on a move.
         "HOMIE_TZ=Europe/Berlin"
-        # Set the home's coordinates to enable latitude-correct solar dusk for lighting
-        # (second-review N4); leave unset for the fixed 18:00–07:00 fallback. Fill in on
-        # move-in (e.g. Kiel: 54.32, 10.14).
-        # "HOMIE_LAT=54.32"
-        # "HOMIE_LON=10.14"
+        # The home's coordinates → latitude-correct solar dusk for lighting (second-review N4).
+        # Owner's current location; UPDATE on the move (next place: 54.39941, 10.22457).
+        "HOMIE_LAT=54.34732"
+        "HOMIE_LON=10.21823"
+        # Off-limits zones (Charter law 4) — never learned/distilled/rendered. Comma-separated;
+        # also read from deploy/off_zones.txt. Empty now (one camera, main room only).
+        # "HOMIE_OFF_ZONES=mum_flat"
         # Point Homie at Home Assistant to drive REAL lights (DIRIGERA/Tradfri) and hear
         # human switch-flips. Both must be set or Homie stays on the no-actuation stub.
         # The token: HA → your profile → Security → Long-lived access tokens. Prefer

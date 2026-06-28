@@ -130,6 +130,17 @@ class CommandLog:
                 return self._pending.pop(i)
         return None
 
+    def forget(self, entity_id: str, value: object) -> bool:
+        """Drop the most-recent matching pending command (the drive failed, so no echo will ever
+        come). Prevents a never-echoed 'ghost' from absorbing a later unrelated change as ours."""
+        target = self._canon(value)
+        for i in range(len(self._pending) - 1, -1, -1):
+            c = self._pending[i]
+            if c.entity_id == entity_id and c.value == target:
+                self._pending.pop(i)
+                return True
+        return False
+
     def _evict(self) -> None:
         now = self._clock()
         self._pending = [c for c in self._pending if now - c.at <= self._window]
@@ -207,6 +218,7 @@ class Act:
         try:
             await self.home.drive(entity, value)
         except Exception as ex:  # the home rejected/failed the command
+            self.commands.forget(entity, value)  # no echo will come — drop the ghost we just recorded
             log.warning("act: drive %s failed: %r", entity, ex)
             await self.bus.publish(
                 Event("actuator.failed", event.ts,

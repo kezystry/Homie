@@ -265,6 +265,7 @@ class TileContext:
 _NAME = re.compile(r"^[a-z][a-z0-9_]*$")
 _PATTERN = re.compile(r"^[a-z0-9_*]+(\.[a-z0-9_*]+)*$")
 _EGRESS = re.compile(r"^egress:[a-z0-9.\-]+$")
+_ACTUATOR = re.compile(r"^[a-z0-9_]+(\.[a-z0-9_]+)*$")  # dotted, lowercase, no globs (must match act-map keys)
 
 
 def load_manifest(toml_path: Path) -> Manifest | InvalidManifest:
@@ -309,6 +310,11 @@ def load_manifest(toml_path: Path) -> Manifest | InvalidManifest:
     for p in subscribes:
         if not _PATTERN.match(p):
             errors.append(f"invalid subscribe pattern '{p}'")
+    for a in actuators:
+        # Actuators must be canonical dotted lowercase (e.g. 'light.kitchen') so they match the
+        # act-map keys; an uppercase/odd name would silently fail to resolve at drive time.
+        if not _ACTUATOR.match(a):
+            errors.append(f"invalid actuator '{a}'")
     if len(set(functions)) != len(functions):
         errors.append("duplicate functions")
     if len(set(intents)) != len(intents):

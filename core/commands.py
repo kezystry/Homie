@@ -23,6 +23,15 @@ log = logging.getLogger("homie.commands")
 CHAT_IN = "chat.message"
 REPLY = "chat.reply"
 
+
+def _minutes_arg(args, default: float = 60.0) -> float:
+    """First arg as float minutes, or `default` if it's missing/not a number. Tolerant by
+    design: '/mute', '/mute 30', '/mute 1.2.3', '/mute abc' must never crash the handler."""
+    try:
+        return float(args[0])
+    except (ValueError, IndexError, TypeError):
+        return default
+
 # System commands → the argv a wired runner executes. Without a runner, the joined string is
 # shown to the owner to paste. `{root}` is filled with the repo path.
 _SYSTEM = {
@@ -90,7 +99,7 @@ class SlashCommands:
         if cmd in ("recommend", "watch", "recommendations"):
             return self._recommend()
         if cmd == "mute":
-            seconds = (float(args[0]) * 60.0) if args and args[0].replace(".", "").isdigit() else 3600.0
+            seconds = _minutes_arg(args) * 60.0 if args else 3600.0
             await self.bus.publish(Event("voice.mute", ts, {"seconds": seconds}, source="commands"))
             return f"Quiet for {round(seconds/60)} min. Say /unmute to switch back on."
         if cmd == "unmute":

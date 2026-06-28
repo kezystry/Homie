@@ -147,3 +147,29 @@ audit ✓), `deploy/llm.py` + the `run.py` cortex wiring, and `os/boot/nvidia-cu
   symlink into the read-only store → can't write state; fails under `ProtectSystem=strict`
   as non-root). *Fix:* copy code as real writable files into the app root, or adjust
   `run.py`'s root resolution. Keep the manual `/opt/homie` until then.
+
+---
+
+## Overview-audit fixes — 2026-06-28 (10-agent audit + adversarial verify)
+
+13 bugs confirmed (7 false-positives dropped). **12 fixed** this session (661 tests);
+the 13th deferred by owner. Owner intake recorded in `docs/PREFERENCES.md`.
+
+- **DONE — privacy (defence-in-depth, before any camera goes live):** OFF-fence now wired
+  END-TO-END — `Remember(off_zones=)` skips off-limits zones at ingest, `GistCollector`
+  gets `off_zones` from `build_daemon`, both fed by `DaemonConfig.off_zones` loaded in
+  `run.py` from `$HOMIE_OFF_ZONES` **and** `deploy/off_zones.txt` (empty now — one camera,
+  main room).
+- **DONE — logic:** undo uses a per-actuator **FIFO queue** (concurrent undos no longer
+  corrupt the ledger); `Act` **forgets** a command whose drive raised (no echo-ghost);
+  `route` infers a 1h window so a no-end appointment still flags a conflict; `FrigateAdapter`
+  dedup is an **LRU** (evict-oldest, never a wholesale flush → no spurious re-announce);
+  tile-manifest **actuator names are validated** (canonical dotted lowercase); `capability`
+  re-mint with a different priority keeps the **bound** one (warns, never drifts);
+  `/mute` tolerates malformed numeric args.
+- **DONE — hygiene:** `selfimprove` computes the date once; dead `DesktopExecutor.display`
+  removed; status-page CSS footer typo fixed.
+- **DEFERRED (owner: "später"):** `agenda.reveal` filtering — sensitive items still render
+  full titles on push/speech; implement reveal-based redaction when the phone channel lands.
+- **Also flagged (unverified test gap):** a bounded-tolerance reconciliation test between
+  `Remember._days` and GIST `day_mass_q` (a ratification amendment) — still TODO.

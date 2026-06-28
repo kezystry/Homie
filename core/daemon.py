@@ -98,6 +98,10 @@ class DaemonConfig:
     node_id: str = "homie"
     housekeep: bool = True             # run the periodic compaction/ritual task
     now: Callable[[], float] = time.time
+    # Off-limits zones (Charter law 4): never learned, never distilled, never rendered. Threaded
+    # into BOTH memory layers (Remember + the GIST collector). Empty by default; deploy loads it
+    # from $HOMIE_OFF_ZONES and/or deploy/off_zones.txt (see scripts/run.py).
+    off_zones: frozenset = field(default_factory=frozenset)
     # The live morning-briefing feed: which HA calendar/to-do/weather entities to read. Wired
     # only when the home is a real HA client (has `request`) AND at least one is configured;
     # empty => no external source (the briefing renders from learned routines + the list alone).
@@ -350,7 +354,7 @@ def build_daemon(home, perception: Perception | None, *, config: DaemonConfig | 
 
     bus = Bus(log_path=(config.state / "events.jsonl") if config.state else None,
               compact_threshold=config.compact_threshold)
-    remember = Remember()
+    remember = Remember(off_zones=config.off_zones)
     consent = Consent(bus)
     confirm = ConfirmResponder(bus)   # the missing producer: a chat yes/no answers a confirm (N10)
     ledger = FrictionLedger(bus)      # the undo timeline (records confirmed actions)
@@ -433,7 +437,7 @@ def build_daemon(home, perception: Perception | None, *, config: DaemonConfig | 
     # The distilled memory (Charter 22/22a): a bus collector buffers the day's life-shape and
     # the nightly ritual folds it into the GIST `.ddn`. Built only with a real on-disk state dir.
     gist = (GistCollector(bus, GistStore(Path(config.state) / "memory.ddn"),
-                          tz=os.environ.get("HOMIE_TZ"))
+                          tz=os.environ.get("HOMIE_TZ"), off_zones=config.off_zones)
             if config.state is not None else None)
 
     # The watch history (owner's call: store everything — titles + all): the full, wipeable

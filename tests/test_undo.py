@@ -133,6 +133,21 @@ class UndoTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.home.drives, [])                    # never re-driven
         self.assertEqual(len(declined), 1)
 
+    async def test_concurrent_undos_on_one_actuator_are_both_marked_undone(self) -> None:
+        # two reversible actions on the SAME actuator, undone back-to-back before either echo:
+        # a single-slot _pending would lose the first; the FIFO queue marks BOTH undone.
+        await self._did("light.kitchen", {"state": "off"}, 1.0)   # prior
+        await self._did("light.kitchen", {"state": "on"}, 2.0)    # action A (prior off)
+        await self._did("light.kitchen", {"state": "off"}, 3.0)   # action B (prior on)
+        rows = self.ledger.recent(3)
+        a = next(r for r in rows if r.value == {"state": "on"})
+        b = next(r for r in rows if r.value == {"state": "off"} and r.reversible)
+        await self.bus.publish(Event("undo.requested", 10.0, {"action_id": a.id}, source="cockpit"))
+        await self.bus.publish(Event("undo.requested", 10.1, {"action_id": b.id}, source="cockpit"))
+        await self.bus.drain()
+        self.assertTrue(self.ledger.get(a.id).undone)
+        self.assertTrue(self.ledger.get(b.id).undone)             # neither was silently dropped
+
     async def test_guarded_undo_without_consent_fails_safe(self) -> None:
         u = Undo(self.bus, self.ledger, self.registry, consent=None)  # no gate available
         await u.start()

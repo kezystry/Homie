@@ -400,7 +400,7 @@ def render_html(facts: dict, *, live: bool = False, refresh: int = 10) -> str:
   .lessons li {{ color:#cdd6e6; }}
   .cards {{ display:flex; gap:14px; flex-wrap:wrap; margin-top:10px; }}
   .card {{ flex:1 1 240px; background:#151926; border:1px solid #1e2430; border-radius:10px; padding:14px 16px; }}
-  footer {{ margin-top:40px; color:#5b6images; }}
+  footer {{ margin-top:40px; color:#5b6170; }}
 </style></head>
 <body><div class="wrap">
   <header><h1>🏠 Homie</h1> {live_note}

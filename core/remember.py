@@ -300,8 +300,12 @@ class Remember:
     #: perception topics the pattern of life is built from (not internal chatter)
     PERCEPTION = ("presence.**", "motion.**", "occupancy.**")
 
-    def __init__(self) -> None:
+    def __init__(self, off_zones=frozenset()) -> None:
         self.model = PatternModel(tz=os.environ.get("HOMIE_TZ"))  # pin the home's zone if set
+        # OFF-fence at INGEST (Charter law 4): an off-limits zone leaves no trace in the model,
+        # not just no render. Defence-in-depth — the perception allowlist is the first gate, this
+        # is the second, so a misconfig or a new perception path can't seed off-limits data.
+        self.off_zones = frozenset(off_zones)
 
     async def record(self, event: Event) -> None:
         # Evaluate-then-commit (C4): anomaly evaluators (Security, Reason) must judge
@@ -317,6 +321,10 @@ class Remember:
         # This is a one-tick ordering nicety, NOT a two-phase bus barrier (the audit's
         # anti-goal): drain() still waits for the commit, so post-drain state is intact.
         await asyncio.sleep(0)
+        if self.off_zones:
+            zone = (event.payload or {}).get("zone")
+            if zone in self.off_zones:
+                return                          # off-limits → never enters the pattern of life
         self.model.observe(event)
 
     async def normal(self, topic: str, zone: str | None, when: float) -> Expectation:

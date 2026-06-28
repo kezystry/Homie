@@ -96,7 +96,8 @@ class ImproveTracker:
         return dt.date().isoformat()
 
     async def _on_correction(self, event: Event) -> None:
-        self._counts[self._date(event.ts)] = self._counts.get(self._date(event.ts), 0) + 1
+        day = self._date(event.ts)                  # compute the local date once (tz-converting)
+        self._counts[day] = self._counts.get(day, 0) + 1
         self._save()
 
     async def _on_morning(self, event: Event) -> None:

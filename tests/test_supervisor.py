@@ -87,6 +87,22 @@ class ManifestTests(unittest.TestCase):
             self.assertTrue(any("network" in e for e in m.errors))
             self.assertTrue(any("subscribe" in e for e in m.errors))
 
+    def test_invalid_actuator_name_rejected(self) -> None:
+        with TemporaryDirectory() as d:
+            # uppercase / non-canonical actuator must be flagged (it would never match act-map keys)
+            bad = toml_for("z", actuators=["light.Kitchen"])
+            make_tile(Path(d), "z", toml=bad, handlers="")
+            m = load_manifest(Path(d) / "z" / "tile.toml")
+            self.assertIsInstance(m, InvalidManifest)
+            self.assertTrue(any("actuator" in e for e in m.errors))
+
+    def test_valid_dotted_actuator_accepted(self) -> None:
+        with TemporaryDirectory() as d:
+            ok = toml_for("z", actuators=["light.kitchen", "desktop.play_pause"])
+            make_tile(Path(d), "z", toml=ok, handlers="")
+            m = load_manifest(Path(d) / "z" / "tile.toml")
+            self.assertNotIsInstance(m, InvalidManifest)
+
     def test_bare_functions_backcompat(self) -> None:
         with TemporaryDirectory() as d:
             make_tile(Path(d), "x", toml=toml_for("x", functions=["a", "b"]), handlers="")
