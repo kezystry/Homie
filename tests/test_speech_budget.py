@@ -122,51 +122,64 @@ class GovernorTests(unittest.TestCase):
 
 
 class AdaptiveAllowanceTests(unittest.TestCase):
-    def test_muting_shrinks_the_allowance(self) -> None:
+    def test_a_one_off_mute_does_not_shrink(self) -> None:
+        # A-4: a single "quiet for dinner" is momentary, not a structural "you're too chatty".
         a = AdaptiveAllowance(start=6)
-        before = a.daily()
         a.too_chatty(0.0)
-        self.assertLess(a.daily(), before)          # told to be quiet → learns to talk less
+        self.assertEqual(a.daily(), 6)
 
-    def test_repeated_mutes_keep_shrinking_to_a_floor(self) -> None:
-        a = AdaptiveAllowance(start=10, lo=1)
-        for _ in range(20):
-            a.too_chatty(0.0)
-        self.assertEqual(a.daily(), 1)              # never silences itself entirely
-
-    def test_tolerated_days_grow_it_back(self) -> None:
-        a = AdaptiveAllowance(start=6, grow=0.5)
-        a.too_chatty(0.0)                            # day 0: annoyed → shrink
-        low = a.value
-        for d in range(1, 6):                        # five days of speaking, no annoyance
-            a.note_spoke(d * DAY)
-        self.assertGreater(a.value, low)            # tolerance earned back, slowly
-
-    def test_a_quiet_day_does_not_grow_it(self) -> None:
+    def test_repeated_mutes_shrink(self) -> None:
         a = AdaptiveAllowance(start=6)
-        v = a.value
-        a.note_spoke(0.0)                            # day 0: spoke, no annoyance...
-        # roll to day 5 WITHOUT speaking on the intervening days
-        a._roll(5 * DAY)
-        # only the one tolerated rollover (day 0→next) grows it once, then quiet days don't
-        self.assertLessEqual(a.value, v + 0.5 + 1e-9)
+        a.too_chatty(0.0)
+        a.too_chatty(3600.0)                         # a 2nd mute within the day → real complaint
+        self.assertLess(a.daily(), 6)
 
-    def test_bounded_above(self) -> None:
-        a = AdaptiveAllowance(start=6, hi=14, grow=5)
-        for d in range(1, 10):
+    def test_repeated_mutes_reach_a_floor(self) -> None:
+        a = AdaptiveAllowance(start=10, lo=1)
+        for i in range(40):
+            a.too_chatty(i * 3600.0)
+        self.assertEqual(a.daily(), 1)               # never silences itself entirely
+
+    def test_speaking_never_grows_it_above_start(self) -> None:
+        # A-4: chattiness must be EARNED — absence of a mute is not approval.
+        a = AdaptiveAllowance(start=6)
+        for d in range(1, 30):
             a.note_spoke(d * DAY)
-        self.assertLessEqual(a.daily(), 14)
+        self.assertLessEqual(a.value, 6)
+
+    def test_overshrink_heals_toward_start_never_above(self) -> None:
+        a = AdaptiveAllowance(start=6, recover_gap_days=3)
+        a.too_chatty(0.0)
+        a.too_chatty(3600.0)                         # shrink below start
+        low = a.value
+        for d in range(1, 20):                        # then many mute-free days
+            a.note_spoke(d * DAY)
+        self.assertGreater(a.value, low)             # heals
+        self.assertLessEqual(a.value, 6)             # ...but never above the baseline
+
+    def test_only_engagement_earns_above_baseline(self) -> None:
+        a = AdaptiveAllowance(start=6, hi=14)
+        for d in range(1, 30):
+            a.note_engaged(d * DAY)                   # a real positive signal
+        self.assertGreater(a.value, 6)
+        self.assertLessEqual(a.daily(), 14)          # bounded
 
 
 class GovernorLearningTests(unittest.TestCase):
-    def test_governor_speaks_less_after_being_told_too_chatty(self) -> None:
+    def test_governor_speaks_less_after_repeated_mutes(self) -> None:
         g = SpeechGovernor(budget=SpeechBudget(per_hour=20.0, per_day=6))
-        # day 1: how many proactive lines get through before the learned ceiling?
         day1 = sum(1 for _ in range(20) if g.decide(0.0).spoken)
-        g.note_too_chatty(0.0)                       # the owner mutes — "too chatty"
-        # day 2: a fresh day, but the learned allowance is now smaller
-        day2 = sum(1 for _ in range(20) if g.decide(DAY).spoken)
-        self.assertLess(day2, day1)                  # it learned to talk less
+        g.note_too_chatty(0.0)
+        g.note_too_chatty(3600.0)                    # a PATTERN of muting → structural shrink
+        day2 = sum(1 for _ in range(20) if g.decide(2 * DAY).spoken)
+        self.assertLess(day2, day1)
+
+    def test_governor_unmoved_by_a_single_mute(self) -> None:
+        g = SpeechGovernor(budget=SpeechBudget(per_hour=20.0, per_day=6))
+        day1 = sum(1 for _ in range(20) if g.decide(0.0).spoken)
+        g.note_too_chatty(0.0)                        # one-off shush
+        day2 = sum(1 for _ in range(20) if g.decide(2 * DAY).spoken)
+        self.assertEqual(day2, day1)                 # no structural change from one mute
 
 
 class LedgerTests(unittest.TestCase):

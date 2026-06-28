@@ -33,7 +33,7 @@ log = logging.getLogger("homie.voice")
 
 SAY = "interface.say"          # in: a tile/cortex proposes a line (ungoverned)
 SPOKEN = "interface.spoken"    # out: the governed line the owner actually hears
-DEFERRED = "speech.deferred"   # out: held for the morning recap (never dropped)
+DEFERRED = "speech.deferred"   # out: over-budget/muted lines — a LOSSY recap count; most die unspoken
 MUTE = "voice.mute"            # in: owner "quiet for {seconds}"
 UNMUTE = "voice.unmute"        # in: owner "you can talk again"
 

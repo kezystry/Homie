@@ -41,12 +41,15 @@ from dataclasses import dataclass
 # Default knobs. There is NO fixed daily cap — Homie LEARNS how chatty to be from the owner's
 # reactions (the `AdaptiveAllowance` below). These are only the STARTING point and the bounds it
 # learns within; the per-hour capacity smooths bursts so a day's lines can't all land at once.
-PROACTIVE_PER_DAY_START = 6   # where the learned allowance starts on day one
+PROACTIVE_PER_DAY_START = 6   # where the learned allowance starts on day one (also the ceiling
+                             # it will NEVER exceed without a real positive-engagement signal)
 PROACTIVE_PER_DAY_MIN = 1     # it never silences itself entirely (a real alert path always exists)
-PROACTIVE_PER_DAY_MAX = 14    # ...nor lets itself become a firehose, however tolerant the owner
+PROACTIVE_PER_DAY_MAX = 14    # the cap engagement could ever raise it to (unused until that signal)
 PROACTIVE_PER_HOUR = 2.0      # token-bucket burst capacity / refill rate (lines per hour)
-SHRINK = 0.6                  # a "too chatty" signal (a mute) multiplies the allowance down
-GROW = 0.5                    # a tolerated day (spoke, no mute) nudges it back up
+SHRINK = 0.6                  # a REPEATED "too chatty" signal multiplies the allowance down
+GROW = 0.5                    # heal an over-shrink back toward START (never above) per quiet day
+REPEAT_WINDOW_S = 86400.0     # two mutes within this = a structural "too chatty", not one-off shush
+RECOVER_GAP_DAYS = 3          # days mute-free before a past over-shrink starts healing toward START
 SECONDS_PER_DAY = 86400
 SECONDS_PER_HOUR = 3600.0
 
@@ -100,7 +103,7 @@ class SpeechBudget:
 
     def day_count(self, ts: float) -> int:
         """Proactive lines already spoken on this calendar day (event-time days)."""
-        return self._day_count if int(ts // SECONDS_PER_DAY) == self._day else 0
+        return self._day_count if self._day is not None and int(ts // SECONDS_PER_DAY) <= self._day else 0
 
     def remaining_today(self, ts: float) -> int:
         return max(0, self.per_day - self.day_count(ts))
@@ -109,7 +112,9 @@ class SpeechBudget:
         """Spend a token if one is available and the daily ceiling is not reached."""
         self._refill(ts)
         day = int(ts // SECONDS_PER_DAY)
-        if day != self._day:
+        # Monotonic forward only: a NEW (later) day resets the count; an out-of-order EARLIER
+        # event folds into the current day, never resetting it (A-5a — the wake-ledger NEW-8 class).
+        if self._day is None or day > self._day:
             self._day, self._day_count = day, 0
         if self._day_count >= self.per_day:
             return False
@@ -183,20 +188,32 @@ class SpeechLedger:
 
 
 class AdaptiveAllowance:
-    """Learns how many proactive lines/day the owner tolerates — there is no fixed cap.
+    """Learns how many proactive lines/day the owner tolerates — there is no fixed cap, and it
+    is biased toward QUIET (the owner's single worst outcome is a nag).
 
-    Event-clocked and deterministic like everything else. `too_chatty(ts)` (the owner muted, or
-    dismissed a line) multiplies the allowance DOWN; a day that Homie spoke and the owner did
-    NOT signal annoyance nudges it UP at the next day rollover. Bounded so it never silences
-    itself entirely (a real alert path always exists) nor becomes a firehose."""
+    Two corrections an external audit demanded (A-4):
+      * **Quiet is the default; chattiness must be EARNED, not assumed.** Homie speaking and the
+        owner simply not muting is NOT approval, so it never auto-grows above START. It only
+        climbs past START on a real positive-engagement signal (`note_engaged`, e.g. the owner
+        follows up on a proactive line) — a seam reserved for that signal.
+      * **A one-off shush is not a structural complaint.** A single mute ("quiet for dinner") is
+        momentary and changes nothing here; only a REPEATED mute (two within a day) is read as
+        "you're too chatty" and shrinks the allowance. A past over-shrink then heals slowly back
+        toward START (never above) over mute-free days, so one bad week isn't permanent.
+
+    Event-clocked and deterministic. Bounded [MIN, MAX]; effectively [MIN, START] until a
+    positive-engagement signal exists."""
 
     def __init__(self, *, start: float = PROACTIVE_PER_DAY_START, lo: float = PROACTIVE_PER_DAY_MIN,
-                 hi: float = PROACTIVE_PER_DAY_MAX, shrink: float = SHRINK, grow: float = GROW) -> None:
+                 hi: float = PROACTIVE_PER_DAY_MAX, shrink: float = SHRINK, grow: float = GROW,
+                 repeat_window: float = REPEAT_WINDOW_S, recover_gap_days: int = RECOVER_GAP_DAYS) -> None:
         self.value = float(start)
+        self.start = float(start)
         self.lo, self.hi, self.shrink, self.grow = lo, hi, shrink, grow
+        self.repeat_window, self.recover_gap_days = repeat_window, recover_gap_days
         self._day: int | None = None
-        self._spoke = False      # did Homie speak proactively this day?
-        self._annoyed = False    # did the owner signal "too chatty" this day?
+        self._last_mute_ts: float | None = None
+        self._last_mute_day: int | None = None
 
     def daily(self) -> int:
         """The current learned daily ceiling (never below 1)."""
@@ -208,19 +225,31 @@ class AdaptiveAllowance:
             self._day = day
             return
         if day != self._day:
-            if self._spoke and not self._annoyed:   # a tolerated day → earn a little more voice
-                self.value = min(self.hi, self.value + self.grow)
-            self._day, self._spoke, self._annoyed = day, False, False
+            # Heal a past over-shrink toward START (never above) after a mute-free stretch —
+            # NOT a generic "got chattier because nobody complained" (that was the A-4 bug).
+            mute_free = self._last_mute_day is None or (day - self._last_mute_day) >= self.recover_gap_days
+            if self.value < self.start and mute_free:
+                self.value = min(self.start, self.value + self.grow)
+            self._day = day
 
     def note_spoke(self, ts: float) -> None:
-        self._roll(ts)
-        self._spoke = True
+        self._roll(ts)   # speaking alone earns nothing — absence of a mute is not approval
 
     def too_chatty(self, ts: float) -> None:
-        """The owner told Homie to be quieter (a mute / a dismissed line). Learn from it."""
+        """The owner muted Homie. A lone mute is a momentary shush (no structural change); a
+        REPEATED mute (within `repeat_window`) is the real 'you're too chatty' and shrinks."""
         self._roll(ts)
-        self.value = max(self.lo, self.value * self.shrink)
-        self._annoyed = True
+        repeated = self._last_mute_ts is not None and (ts - self._last_mute_ts) <= self.repeat_window
+        self._last_mute_ts, self._last_mute_day = ts, int(ts // SECONDS_PER_DAY)
+        if repeated:
+            self.value = max(self.lo, self.value * self.shrink)
+
+    def note_engaged(self, ts: float) -> None:
+        """A real positive signal (the owner acted on / replied to a proactive line). The ONLY
+        thing that earns more voice than the starting baseline. Reserved for when that signal is
+        wired — kept here so chattiness can only ever be earned, never assumed."""
+        self._roll(ts)
+        self.value = min(self.hi, self.value + self.grow)
 
 
 class SpeechGovernor:

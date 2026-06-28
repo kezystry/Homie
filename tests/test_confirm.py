@@ -25,12 +25,20 @@ class ParseTests(unittest.TestCase):
         for t in ("", "what's the weather", "turn on the light", "maybe later"):
             self.assertIsNone(parse_yes_no(t))
 
+    def test_first_word_does_NOT_match_a_whole_sentence(self) -> None:
+        # A-2: a safety gate must not be answered by a sentence that merely STARTS with yes/no.
+        for t in ("stop lighting the kitchen", "no idea what that means",
+                  "yes and also remind me to call mum", "sure, that reminds me of something"):
+            self.assertIsNone(parse_yes_no(t))
+
 
 class ResponderTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         self.bus = Bus()
         self.responses: list = []
+        self.echoes: list = []
         self.bus.subscribe("confirm.response", lambda e: self.responses.append(e))
+        self.bus.subscribe("chat.reply", lambda e: self.echoes.append(e))
         self.r = ConfirmResponder(self.bus)
         await self.r.start()
 
@@ -78,6 +86,24 @@ class ResponderTests(unittest.IsolatedAsyncioTestCase):
         await self._say("hmm not sure")              # not yes/no → confirm stays open
         await self._say("yes")
         self.assertEqual(self.responses[0].payload, {"id": "c5", "yes": True})
+
+    async def test_concurrent_confirms_answered_oldest_first_no_misapproval(self) -> None:
+        # A-1: "buy X?" opens, then "sell Y?" opens; the owner's "yes" must approve the one shown
+        # FIRST (buy X), not the latest — and echo WHICH, never silently mis-map.
+        await self.bus.publish(Event("confirm.requested", 0.0, {"id": "buy", "prompt": "buy X for 40?"}, source="consent"))
+        await self.bus.publish(Event("confirm.requested", 1.0, {"id": "sell", "prompt": "sell Y?"}, source="consent"))
+        await self.bus.drain()
+        await self._say("yes", ts=2.0)
+        self.assertEqual(self.responses[-1].payload, {"id": "buy", "yes": True})   # the FRONT one
+        self.assertIn("buy X", self.echoes[-1].payload["text"])                    # echoed what was approved
+        await self._say("no", ts=3.0)
+        self.assertEqual(self.responses[-1].payload, {"id": "sell", "yes": False}) # then the next
+
+    async def test_echo_reports_the_decision(self) -> None:
+        await self._ask("c6")  # prompt is "warm the lights?"
+        await self._say("yes")
+        self.assertTrue(self.echoes and self.echoes[-1].payload["text"].startswith("Approved"))
+        self.assertIn("warm the lights", self.echoes[-1].payload["text"])
 
 
 class EndToEndTests(unittest.IsolatedAsyncioTestCase):
