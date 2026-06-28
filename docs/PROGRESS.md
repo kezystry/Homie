@@ -5,7 +5,7 @@ the **what & why**; this file is the **how it's going**. Updated every time a mi
 lands or a decision is taken.*
 
 - **Branch:** `claude/homie-overview-bo4l8v`
-- **Tests:** 540 passing (`python3 -m unittest discover -s tests`) — green on every push
+- **Tests:** 562 passing (`python3 -m unittest discover -s tests`) — green on every push
 - **Last updated:** 2026-06-28, after the **Camera foundation** (registry + positive zone-allowlist +
   go2rtc/Frigate config-gen + the edge adapter where frames die — see [`docs/CAMERA.md`](CAMERA.md)) and
   the **external-audit safety pass** (FIFO confirm queue + exact-match yes/no + the Coherence test that
@@ -54,9 +54,11 @@ CAM  ✅ founded   Camera foundation — registry + positive zone-allowlist + go
 DUSK ✅ shipped   Dusk lighting offer-once-then-auto — first dusk ASKS, a yes locks in silent
                  auto, repeated declines settle to no (anti-nag). Owner's call.
 SELF ◑ building  Self-sufficiency (Charter 8a/13a/22a/23a/25a/28a from a 5-pro council) — storage
-                 Groundskeeper ✅ · GIST nightly fold slices 4+5 ✅ (day-type/daypart classifiers +
-                 counted-absence fold + nmin promote + OFF-fence + bounded prune). Next: slice 6
-                 brief render · slice 7 wire into ritual · S1.5 earned growth (mechanism = decision).
+                 Groundskeeper ✅ · GIST nightly memory S1 ✅: slices 4+5 (classifiers + counted-
+                 absence fold + nmin promote + OFF-fence + bounded prune) · slice 6 prose brief
+                 (tense=honesty) · slice 7 store+collector wired into the ritual (runs nightly,
+                 persisted .ddn) · S1.5 earned persistence (Mechanism 2, 3-pro council: belief
+                 fades fast, record lingers years). Next: S2 self-cycle · S3 consent/gallery.
 M7   ⏳ planned    Positive-schema privacy guard + Dream Journal (retrieval)
 M8   ⏳ planned    Friction Ledger pane + one-key undo
 M9   ⏳ planned    Deploy posture + confinement

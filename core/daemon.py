@@ -52,6 +52,7 @@ from core.mesh import Link, MeshBridge
 from core.reason import LLMClient, NullLLMClient, Reason
 from core.reconcile import StateReconciler
 from core.remember import Remember
+from core.gist_store import GistCollector, GistStore
 from core.ritual import consolidate
 from core.tile import Supervisor
 from core.undo import Undo
@@ -109,7 +110,7 @@ class Daemon:
 
     def __init__(self, *, bus, remember, consent, confirm, ledger, undo, sup, act, reconciler, reason,
                  voice, anchor, cockpit, mesh, clock, home, perception, config: DaemonConfig,
-                 ha_agenda=None, groundskeeper=None) -> None:
+                 ha_agenda=None, groundskeeper=None, gist=None) -> None:
         self.bus = bus
         self.remember = remember
         self.consent = consent
@@ -129,6 +130,7 @@ class Daemon:
         self.perception = perception
         self.ha_agenda = ha_agenda    # live HA calendar/to-do/weather feed (None if not configured)
         self.groundskeeper = groundskeeper  # storage limb (None for in-memory test graphs)
+        self.gist = gist              # distilled-memory collector (None for in-memory test graphs)
         self.config = config
         self._tasks: list[asyncio.Task] = []
         self.started = False
@@ -143,6 +145,8 @@ class Daemon:
         await self.confirm.start()            # makes the consent gate answerable from chat
         await self.act.start()
         await self.ledger.start()             # record actions for the undo timeline
+        if self.gist is not None:
+            await self.gist.start()           # buffer the day's life-shape for the nightly distill
         await self.undo.start()               # one-tap reversal: re-drive a row's prior value
         await self.voice.start()              # the muzzle: live BEFORE any tile can speak
         self.reconciler.attach(self.home)     # human state-changes -> friction
@@ -203,7 +207,8 @@ class Daemon:
                 now = self.config.now()
                 if now - last_ritual >= self.config.ritual_interval:
                     await consolidate(bus=self.bus, remember=self.remember,
-                                      supervisor=self.sup, now=now)
+                                      supervisor=self.sup, now=now,
+                                      gist_fold=self.gist.fold if self.gist is not None else None)
                     last_ritual = now
                 else:
                     await self.bus.maybe_compact(self.remember.snapshot)
@@ -229,6 +234,8 @@ class Daemon:
         await self.voice.stop()
         await self.confirm.stop()
         await self.undo.stop()
+        if self.gist is not None:
+            await self.gist.stop()
         await self.ledger.stop()
         if self.anchor is not None:
             await self.anchor.stop()
@@ -306,6 +313,12 @@ def build_daemon(home, perception: Perception | None, *, config: DaemonConfig | 
     # full. Built only when there is a real on-disk state dir; in-memory test graphs skip it.
     groundskeeper = Groundskeeper(config.state, bus, remember.snapshot) if config.state is not None else None
 
+    # The distilled memory (Charter 22/22a): a bus collector buffers the day's life-shape and
+    # the nightly ritual folds it into the GIST `.ddn`. Built only with a real on-disk state dir.
+    gist = (GistCollector(bus, GistStore(Path(config.state) / "memory.ddn"),
+                          tz=os.environ.get("HOMIE_TZ"))
+            if config.state is not None else None)
+
     # The live morning feed: real HA calendar/to-do/weather → agenda.external, folded by the
     # Personal tile into the briefing. Wired ONLY when the home can answer queries (a real HA
     # client exposes `request`) and at least one entity is configured — otherwise the briefing
@@ -323,4 +336,4 @@ def build_daemon(home, perception: Perception | None, *, config: DaemonConfig | 
     return Daemon(bus=bus, remember=remember, consent=consent, confirm=confirm, ledger=ledger, undo=undo, sup=sup, act=act,
                   reconciler=reconciler, reason=reason, voice=voice, anchor=anchor,
                   cockpit=cockpit, mesh=mesh, clock=clock, home=home, perception=perception, ha_agenda=ha_agenda,
-                  groundskeeper=groundskeeper, config=config)
+                  groundskeeper=groundskeeper, gist=gist, config=config)

@@ -30,7 +30,8 @@
 - **Code:** `core/` (`bus`, `remember` (now with honest `prob`/`firm` beliefs), `tile`
   runtime + channels, `clock`, `mesh`, `act` + `capability`, `reason` (cortex) + `serving`,
   `reconcile`, `consent`, `confirm_responder`, `friction_ledger` + `undo` (one-tap reversal),
-  `groundskeeper` (silent storage hygiene), `canonical`, `ritual`, `gist`; the anti-nag waist `voice` +
+  `groundskeeper` (silent storage hygiene), `canonical`, `ritual`, `gist` + `gist_store` (the
+  nightly-distilled memory: earned persistence, runs in the ritual); the anti-nag waist `voice` +
   `speech_budget`; the morning surface `journal` + `recap` + `agenda` + `briefing` + `route`;
   the HA hand `ha` + `ws` + `ha_discovery`; the eyes `camera` (registry + zone-allowlist +
   go2rtc/Frigate config-gen)), `perception/` (`frigate_adapter` — frames die at the edge),
