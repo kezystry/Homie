@@ -216,6 +216,19 @@ def runtime_facts(state_dir: Path | None) -> dict:
 
     # The recommendation page: your watch history → taste + predictions + picks (best-effort,
     # guarded — a missing/odd watch.json never breaks the status page).
+    # Self-improvement — the correction-rate trend (am I fitting you better?).
+    improve_path = state / "improve.json"
+    if improve_path.exists():
+        try:
+            import json as _json
+            from core import selfimprove
+            hist = {str(k): int(v) for k, v in _json.loads(improve_path.read_text("utf-8")).items()}
+            if hist:
+                facts["improving"] = {"trend": selfimprove.trend(hist),
+                                      "avg_per_day": round(selfimprove.average(hist), 1)}
+        except Exception:
+            pass
+
     # Live "now playing" — the answer to "what am I watching right now?".
     now_path = state / "now.json"
     if now_path.exists():
@@ -465,6 +478,10 @@ def render_text(facts: dict, *, color: bool = True, width: int = 64) -> str:
         now = rt.get("now_watching")
         if now:
             L.append(c(f"  ▶ now watching: {now.get('title')} ({now.get('app')})", "dim"))
+        imp = rt.get("improving")
+        if imp:
+            arrow = {"down": "↓ fewer", "up": "↑ more", "steady": "≈ steady", "new": "learning"}.get(imp["trend"], imp["trend"])
+            L.append(c(f"  fitting you: {arrow} corrections (~{imp['avg_per_day']}/day)", "dim"))
         knows = rt.get("knows") or []
         if knows:
             L.append(c("  what Homie knows about you:", "dim"))
