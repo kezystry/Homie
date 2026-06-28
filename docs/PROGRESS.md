@@ -5,7 +5,7 @@ the **what & why**; this file is the **how it's going**. Updated every time a mi
 lands or a decision is taken.*
 
 - **Branch:** `claude/homie-overview-bo4l8v`
-- **Tests:** 443 passing (`python3 -m unittest discover -s tests`) — green on every push
+- **Tests:** 467 passing (`python3 -m unittest discover -s tests`) — green on every push
 - **Last updated:** 2026-06-27, after **Phase A — the SpeechBudget muzzle** (one global cap on
   owner-facing speech, the anti-nag waist), following the master-vision brainstorm + its external
   audit. The audit's scope filter is now binding in [`docs/SCOPE.md`](SCOPE.md): build the **six-thing
@@ -43,11 +43,10 @@ M5   ✅ shipped   Capability-gated act path — no faked commands (closes C2/C1
 M6   ✅ shipped   8B-on-3060 serving discipline — latency SLO, warm/cold, tool grammar
 PA   ✅ shipped   Phase A — Self-pacing voice: one governor that LEARNS how chatty to be (anti-nag)
 PB   ✅ core      Phase B — honest beliefs: prob∈[0,1] + mean-revert + nmin (fixes the >1.0 bug)
-PD   🔄 building  Phase D — the undo button: confirm gate ✅ · Friction Ledger (reversible rows) ✅
-                 · one-key undo re-drive next
 PC   ✅ done     Phase C — first win: "What Homie Knows" page ✅ · Agenda+Briefing+route ✅ ·
                  morning wiring ✅ (clock fires time.morning → ONE governed line + screen page);
                  backward recap line + HA calendar/weather sources + correction next
+PD   🔄 building  Phase D — the undo button: confirm gate ✅ · Friction Ledger ✅ · re-drive next
 M7   ⏳ planned    Positive-schema privacy guard + Dream Journal (retrieval)
 M8   ⏳ planned    Friction Ledger pane + one-key undo
 M9   ⏳ planned    Deploy posture + confinement
