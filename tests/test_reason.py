@@ -342,6 +342,7 @@ class CortexServingTests(unittest.IsolatedAsyncioTestCase):
         self.assertAlmostEqual(p["latency_ms"], 1500.0)
         self.assertTrue(p["slo_met"])     # 1500ms < 4000ms budget
         self.assertTrue(p["warm"])        # the GPU just woke
+        self.assertIn("reject_rate", p)   # rolling tool-call rejection rate is surfaced
         self.assertEqual(slo.total, 1)
         self.assertEqual(slo.breaches, 0)
         await reason.stop()

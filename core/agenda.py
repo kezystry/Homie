@@ -206,6 +206,21 @@ def _belief_title(r: dict) -> str:
     return _subject(r.get("topic", ""), r.get("zone")).capitalize()
 
 
+# A sensitive item's title is shown in full on YOUR local screen but never spoken aloud or
+# pushed (briefing redaction). The signal is owner-authored and needs no config: a `[private]`
+# tag in the calendar/to-do summary, or a calendar/list whose entity name says private/sensitive.
+_SENSITIVE_MARK = "[private]"
+
+
+def reveal_for(summary: str | None, entity: str | None) -> str:
+    """'sensitive' | 'household' from an owner-authored signal (a [private] tag or the entity
+    name). Pure; default 'household'."""
+    s, ent = (summary or "").lower(), (entity or "").lower()
+    if _SENSITIVE_MARK in s or "private" in ent or "sensitive" in ent:
+        return "sensitive"
+    return "household"
+
+
 def from_ha_calendar(events: list[dict]) -> list[AgendaItem]:
     """HA `calendar.*` events -> EVENT items. Each event is a dict with start/end epoch (or an
     all_day flag), a summary, an optional location, and a stable uid."""
@@ -219,7 +234,7 @@ def from_ha_calendar(events: list[dict]) -> list[AgendaItem]:
             kind=EVENT, when=when, title=str(e.get("summary", "(event)")),
             place=Place(loc) if loc else None,
             source=f"ha:{e.get('entity', 'calendar')}", source_id=str(e.get("uid", "")),
-            confidence=1.0, firm=True))
+            confidence=1.0, firm=True, reveal=reveal_for(e.get("summary"), e.get("entity"))))
     return out
 
 
@@ -232,7 +247,7 @@ def from_ha_todo(items: list[dict]) -> list[AgendaItem]:
         out.append(AgendaItem(
             kind=DUE, when=when, title=str(t.get("summary", "(task)")),
             source=f"ha:{t.get('entity', 'todo')}", source_id=str(t.get("uid", "")),
-            confidence=1.0, firm=True))
+            confidence=1.0, firm=True, reveal=reveal_for(t.get("summary"), t.get("entity"))))
     return out
 
 

@@ -17,7 +17,7 @@ import time
 from dataclasses import dataclass
 from typing import Callable, NamedTuple, Protocol
 
-from core.serving import LatencySLO, WarmPolicy
+from core.serving import LatencySLO, RejectionRate, WarmPolicy
 from core.tile import Event
 from core.wake_ledger import SurpriseGate, WakeBudget, WakeDecision, WakeLedger
 
@@ -195,6 +195,7 @@ class Reason:
         # Serving discipline (M6): measure latency against an SLO, track warm/cold from the
         # wake cadence. `now` is a monotonic clock for measuring round-trips (injected in tests).
         self.slo = slo if slo is not None else LatencySLO()
+        self.rejections = RejectionRate()    # rolling tool-call rejection rate (model-drift signal)
         self.warm = warm if warm is not None else WarmPolicy(now=now)
         self._now = now
         self._subs: list = []
@@ -241,7 +242,8 @@ class Reason:
         else:
             outcome, fired = "fired", True
 
-        await self._ledger_record(event, exp, zone, surprising, fired, deferred, outcome)
+        await self._ledger_record(event, exp, zone, surprising, fired, deferred, outcome,
+                                  threshold=self.gate.threshold(key))
         if not fired:
             return
 
@@ -259,7 +261,8 @@ class Reason:
         # are reproducible on any machine (the replay-stability property M3 asserts).
         return int((ts // 3600) % 24)
 
-    async def _ledger_record(self, event: Event, exp, zone, surprising, fired, deferred, outcome) -> None:
+    async def _ledger_record(self, event: Event, exp, zone, surprising, fired, deferred, outcome,
+                             *, threshold: float | None = None) -> None:
         decision = WakeDecision(
             topic=event.topic, zone=zone, hour=self._hour(event.ts),
             rate=float(getattr(exp, "rate", 0.0)), novel=bool(getattr(exp, "novel", False)),
@@ -271,6 +274,7 @@ class Reason:
                 "topic": decision.topic, "zone": decision.zone, "hour": decision.hour,
                 "rate": decision.rate, "novel": decision.novel, "fired": decision.fired,
                 "deferred": decision.deferred, "outcome": decision.outcome,
+                "threshold": round(threshold, 4) if threshold is not None else None,
             }, source="reason"))
 
     async def _timed_propose(self, *, system: str, context: dict, tools: list[dict], ts: float, kind: str) -> Proposal:
@@ -287,6 +291,7 @@ class Reason:
             await self.bus.publish(Event(SERVED, ts, {
                 "kind": kind, "latency_ms": round(latency_ms, 1), "slo_met": met,
                 "p95_ms": self.slo.p95(), "warm": self.warm.is_warm(),
+                "reject_rate": round(self.rejections.rate(), 4),
             }, source="reason"))
         return proposal
 
@@ -319,6 +324,7 @@ class Reason:
         if call is None:
             return False
         errors = validate_tool_call(tools, call.name, call.arguments)
+        self.rejections.record(bool(errors))   # telemetry: track the rolling rejection rate
         if errors:  # hallucinated / malformed — rejected, never executed
             log.warning("reason: rejected tool call %s%r: %s", call.name, call.arguments, "; ".join(errors))
             return False

@@ -5,7 +5,7 @@ the **what & why**; this file is the **how it's going**. Updated every time a mi
 lands or a decision is taken.*
 
 - **Branch:** `claude/homie-overview-bo4l8v`
-- **Tests:** 667 passing (`python3 -m unittest discover -s tests`) — green on every push
+- **Tests:** 674 passing (`python3 -m unittest discover -s tests`) — green on every push
 - **Last updated:** 2026-06-28, after the **Camera foundation** (registry + positive zone-allowlist +
   go2rtc/Frigate config-gen + the edge adapter where frames die — see [`docs/CAMERA.md`](CAMERA.md)) and
   the **external-audit safety pass** (FIFO confirm queue + exact-match yes/no + the Coherence test that

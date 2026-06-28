@@ -77,6 +77,33 @@ class LatencySLO:
         }
 
 
+class RejectionRate:
+    """A rolling record of how often the cortex's proposed tool-calls are REJECTED by the
+    structural validator (hallucinated / malformed). A rising rate is an early signal the model
+    is drifting or the tool schema changed. Pure bookkeeping, same shape as LatencySLO."""
+
+    def __init__(self, *, window: int = 50) -> None:
+        self.window = window
+        self._recent: deque[bool] = deque(maxlen=window)   # True = rejected
+        self.attempts = 0
+        self.rejections = 0
+
+    def record(self, rejected: bool) -> None:
+        """Record one validated tool-call (rejected or accepted)."""
+        self._recent.append(bool(rejected))
+        self.attempts += 1
+        if rejected:
+            self.rejections += 1
+
+    def rate(self) -> float:
+        """The rejection fraction over the rolling window (0.0 when nothing seen yet)."""
+        return (sum(self._recent) / len(self._recent)) if self._recent else 0.0
+
+    def summary(self) -> dict:
+        return {"attempts": self.attempts, "rejections": self.rejections,
+                "rate": round(self.rate(), 4)}
+
+
 class WarmPolicy:
     """Keep-warm decision for the heavy GPU model, driven by recent wake cadence.
 

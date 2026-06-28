@@ -6,7 +6,7 @@
 
 No cloud. No accounts. No telemetry. Nothing ever leaves your network.
 
-[![tests](https://img.shields.io/badge/tests-625%20passing-brightgreen)](tests/)
+[![tests](https://img.shields.io/badge/tests-674%20passing-brightgreen)](tests/)
 [![python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![dependencies](https://img.shields.io/badge/runtime%20deps-stdlib%20only-success)](#engineering-discipline)
 [![privacy](https://img.shields.io/badge/cloud-none-critical)](#security--privacy)
@@ -136,12 +136,17 @@ flowchart LR
 | **Home Assistant adapter** | ✅ | Drives real DIRIGERA/Tradfri lights and hears human switch-flips, over a stdlib WebSocket with a liveness heartbeat. |
 | **Self-pacing voice** | ✅ | One global governor on unprompted speech that *learns* how chatty to be — muting it shrinks its allowance, a tolerated day grows it; safety always heard, overflow defers. No hand-set cap. |
 | **Honest beliefs** | ✅ | Every learned routine is a true probability in [0,1] that mean-reverts when a habit stops; a coincidence is never stated as fact. |
-| **Morning surface** | ✅ | A plain "what Homie knows" page + a daily recap (yesterday) and briefing (today's agenda + a sensible errand order), capped so it never floods. |
-| **Serving discipline** | ✅ | Local-model latency SLO, warm/cold GPU policy, and JSON-schema-constrained tool decoding (the GPU brain itself is not yet stood up). |
-| **Distilled memory (GIST)** | 🔬 | A deterministic, integer-exact "field notebook" of the home's rhythm — the integer core is built; the full format is in design ([spec](docs/MEMORY-GIST.md)). |
-| Undo button · automatic lighting · calendar/weather · guardian · voice · camera | 🔜 / 🅿️ | On the [plan](docs/PLAN-FORWARD.md) — undo is next; the rest is sequenced or needs hardware. |
+| **Morning surface** | ✅ | A "what Homie knows" page + recap (yesterday) and briefing (today's agenda, live calendar/weather, errand order), capped so it never floods. Sensitive items render locally but are never spoken or pushed. |
+| **One-tap undo** | ✅ | Any confirmed action is a reversible row; one tap re-drives the prior value through the same capability gate. Guarded domains (locks, alarm) confirm first. |
+| **Automatic lighting** | ✅ | Presence- and dusk-driven room lighting that learns from reversals (offer-once, then act), dims for a film, and yields to any safety/security decision. |
+| **Distilled memory (GIST)** | ✅ | A deterministic, integer-exact nightly distill of the home's rhythm — earned persistence (proven routines linger, flukes fade), byte-exact, off-limits zones unrepresentable. |
+| **Nightly self-renewal** | ✅ | Consolidate · self-heal · health-gated self-upgrade with auto-rollback — deferred while a film plays or the home is active; one honest morning word. |
+| **Desktop eyes + hands** | ✅ | Sees the active app + what's playing on the main PC (facts, never frames), controls playback and closes windows via a fixed safe-verb allowlist, and builds a private watch-history + recommendations. |
+| **Owner /commands** | ✅ | Typed in chat: `/status` `/now` `/recommend` `/mute` `/private` `/close` `/model` and self-executing `/update` `/restart` `/rebuild` `/reboot` `/rollback`. |
+| **Serving discipline** | ✅ | Local-model latency SLO, warm/cold GPU policy, JSON-schema-constrained tool decoding, and a tool-call rejection-rate signal (the GPU brain itself is not yet stood up). |
+| Guardian (intrusion/hazard) · camera human-reading · phone back-channel | 🅿️ | On the [plan](docs/PLAN-FORWARD.md) — sequenced, or waiting on the perception accelerator. |
 
-**625 stdlib tests pass** — and the tested graph *is* the shipped graph.
+**674 stdlib tests pass** — and the tested graph *is* the shipped graph.
 
 ## Quickstart
 
@@ -150,7 +155,7 @@ Python 3.11+, **standard library only** — no dependencies to run the spine.
 ```sh
 git clone https://github.com/kezystry/homie.git && cd homie
 
-python3 -m unittest discover -s tests   # the full suite (625 tests)
+python3 -m unittest discover -s tests   # the full suite (674 tests)
 python3 scripts/spine_demo.py           # the five-part loop, end to end on one node
 python3 scripts/status.py --text        # a live status board (great over SSH)
 python3 scripts/run.py                  # the daemon (bus + Remember + Supervisor + tiles)
@@ -183,8 +188,8 @@ rollback-able generation, and the box updates itself via a pull → health-check
 ```
 core/        the spine: bus · remember · reason · act · reconcile · tile runtime ·
              capability · wake_ledger · serving · ha · ws · canonical · ritual · mesh …
-tiles/       living tiles — personal · security · lighting — + _template for new ones
-tests/       stdlib unittest suite (66 files, 625 tests)
+tiles/       living tiles — personal · security · lighting · desktop — + _template for new ones
+tests/       stdlib unittest suite (68 files, 674 tests)
 scripts/     run.py (daemon) · spine_demo.py (demo) · status.py (live board) · update.py
 os/          dual-boot hardened NixOS profile + INSTALL.md
 deploy/      runtime config — act_map.toml · llm.py · home.py · MODEL.md (model card)
@@ -231,15 +236,15 @@ The plan is written as **things you'll feel, in order** (full version:
 
 | | Step | State |
 |---|---|---|
-| 1–4 | Knows you · handles your mornings · won't nag · **drives your real lights** | ✅ done |
-| 5 | You can answer yes/no (the confirm gate works) | ✅ done |
-| **6** | **An undo button** — reverse anything, one tap, with a correction log | 🔜 **now** |
-| 7 | Lights act on their own (dusk → presence) | 🔜 |
-| 8–9 | Real calendar + weather in the briefing · the overnight "what changed" note | 🔜 |
+| 1–5 | Knows you · handles your mornings · won't nag · **drives your real lights** · answers yes/no | ✅ done |
+| 6 | An undo button — reverse anything, one tap, with a correction log | ✅ done |
+| 7 | Lights act on their own (dusk → presence) | ✅ done |
+| 8–9 | Real calendar + weather in the briefing · the overnight "what changed" note | ✅ done |
+| — | Desktop eyes + hands · owner /commands · nightly self-upgrade | ✅ done |
 | 10–11 | House locked down · the guardian wakes (intrusion, hazard, emergency) | 🅿️ |
-| 12–14 | The butler (life-admin + KartenWerk) · nightly self-upgrade · camera human-reading | 🅿️ |
+| 12–14 | The butler (life-admin) · camera human-reading · phone back-channel | 🅿️ |
 
-✅ done · 🔜 next · 🅿️ deferred on purpose (built once the soul is lived-in). Live status:
+✅ done · 🅿️ deferred on purpose (sequenced, or waiting on hardware). Live status:
 [docs/PROGRESS.md](docs/PROGRESS.md).
 
 ## Documentation

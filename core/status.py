@@ -146,6 +146,31 @@ def _count_lines(path: Path) -> int:
         return 0
 
 
+def _latest_threshold_by_zone(state: Path) -> dict[str, float]:
+    """The most recent surprise `threshold` per zone from the wake.decision tail — a small map
+    {zone: threshold}. Cheap substring prefilter; a missing field is just skipped."""
+    out: dict[str, float] = {}
+    for f in sorted(state.glob("events*.jsonl")):
+        try:
+            with f.open("r", encoding="utf-8") as fh:
+                for line in fh:
+                    if "wake.decision" not in line:
+                        continue
+                    try:
+                        ev = json.loads(line)
+                    except ValueError:
+                        continue
+                    if ev.get("topic") != "wake.decision":
+                        continue
+                    p = ev.get("payload") or {}
+                    thr = p.get("threshold")
+                    if thr is not None:
+                        out[str(p.get("zone"))] = thr   # last write wins → most recent per zone
+        except OSError:
+            continue
+    return out
+
+
 def _last_event_payload(state: Path, topic: str) -> dict | None:
     """The payload of the most recent event on `topic` in the log (or None). A cheap
     substring prefilter keeps this from JSON-parsing every line of a long log."""
@@ -269,7 +294,14 @@ def runtime_facts(state_dir: Path | None) -> dict:
             "p95_ms": served.get("p95_ms"),
             "slo_met": served.get("slo_met"),
             "warm": served.get("warm"),
+            "reject_rate": served.get("reject_rate"),   # rolling tool-call rejection rate
         }
+
+    # Per-zone surprise: the latest calibrated novelty threshold seen in each zone (how regular
+    # Homie has found that corner of the home). Read from the wake.decision tail.
+    surprise = _latest_threshold_by_zone(state)
+    if surprise:
+        facts["surprise"] = surprise
     return facts
 
 
@@ -480,8 +512,16 @@ def render_text(facts: dict, *, color: bool = True, width: int = 64) -> str:
         if sv:
             warm = "warm" if sv.get("warm") else "asleep"
             slo_key = "ok" if sv.get("slo_met") else "blocked"
-            L.append(f"  brain {c(str(sv.get('latency_ms')) + 'ms', slo_key)} last · "
-                     f"p95 {c(str(sv.get('p95_ms')) + 'ms', 'dim')} · GPU {c(warm, 'dim')}")
+            line = (f"  brain {c(str(sv.get('latency_ms')) + 'ms', slo_key)} last · "
+                    f"p95 {c(str(sv.get('p95_ms')) + 'ms', 'dim')} · GPU {c(warm, 'dim')}")
+            if sv.get("reject_rate") is not None:
+                pct = "{:.0%}".format(sv["reject_rate"])
+                line += " · rejects " + c(pct, "dim")
+            L.append(line)
+        sp = rt.get("surprise")
+        if sp:
+            zones = ", ".join(f"{z} {t:.2f}" for z, t in sorted(sp.items()))
+            L.append(c(f"  surprise floor by zone: {zones}", "dim"))
         lessons = rt.get("lessons") or []
         if lessons:
             L.append(c("  what Homie has learned:", "dim"))

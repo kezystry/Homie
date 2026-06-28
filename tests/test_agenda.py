@@ -185,5 +185,34 @@ class AdapterTests(unittest.TestCase):
         self.assertIsNone(weather_clause(None))
 
 
+class RevealTests(unittest.TestCase):
+    def test_reveal_signal_from_tag_or_entity(self) -> None:
+        from core.agenda import reveal_for
+        self.assertEqual(reveal_for("[private] Therapy", "calendar.work"), "sensitive")
+        self.assertEqual(reveal_for("Standup", "calendar.private_stuff"), "sensitive")
+        self.assertEqual(reveal_for("Standup", "calendar.work"), "household")
+
+    def test_ha_calendar_marks_sensitive(self) -> None:
+        items = from_ha_calendar([{"start": t(9), "summary": "[private] Therapy",
+                                   "uid": "9", "entity": "calendar.work"}])
+        self.assertEqual(items[0].reveal, "sensitive")
+
+    def test_sensitive_item_redacted_on_speech_but_not_on_screen(self) -> None:
+        it = AgendaItem(kind="event", when=Temporal.at(t(9)), title="[private] Therapy",
+                        place=Place("Clinic", "town"), reveal="sensitive")
+        view = AgendaView([it])
+        screen = briefing.build(view, t(8), tz=UTC)               # local page
+        spoken = briefing.build(view, t(8), tz=UTC, redact=True)  # voice/push
+        self.assertTrue(any("Therapy" in s for s in screen.render_lines()))   # full title local
+        self.assertIn("a private appointment", spoken.speak_line())           # redacted aloud
+        self.assertNotIn("Therapy", spoken.speak_line())
+
+    def test_household_item_unchanged_when_redacting(self) -> None:
+        it = AgendaItem(kind="event", when=Temporal.at(t(9)), title="Dentist",
+                        place=Place("Clinic", "town"))
+        view = AgendaView([it])
+        self.assertIn("Dentist", briefing.build(view, t(8), tz=UTC, redact=True).speak_line())
+
+
 if __name__ == "__main__":
     unittest.main()

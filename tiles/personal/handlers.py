@@ -73,11 +73,15 @@ class Personal(Tile):
         weather = agenda.weather_clause(external.get("weather"))
 
         view = agenda.AgendaView(items, tz=os.environ.get("HOMIE_TZ"))
-        brief = briefing_mod.build(view, now, weather=weather, tz=tz,
-                                   recap_line=self._recap_line(now, tz))
+        recap_line = self._recap_line(now, tz)
+        brief = briefing_mod.build(view, now, weather=weather, tz=tz, recap_line=recap_line)
 
-        # ONE budgeted proactive line through the VoiceGate; the full page goes to the screen.
-        line = brief.speak_line()
+        # ONE budgeted proactive line through the VoiceGate — built from a REDACTED brief so a
+        # sensitive item is never spoken aloud or pushed; the full page (below) keeps every title
+        # on YOUR local screen.
+        spoken = briefing_mod.build(view, now, weather=weather, tz=tz,
+                                    recap_line=recap_line, redact=True)
+        line = spoken.speak_line()
         if line:
             await ctx.speak(line, kind="proactive")
         await ctx.emit(Event(BRIEFING_READY, now,

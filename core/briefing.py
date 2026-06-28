@@ -96,28 +96,39 @@ class Briefing:
         return "Today — " + "; ".join(bits) if bits else None
 
 
-def _timeline_label(it, tz) -> str:
+# When redacting (the spoken/pushed surface), a 'sensitive' item shows this instead of its title.
+# The full title still renders on the LOCAL screen (build called with redact=False there).
+PRIVATE_LABEL = "a private appointment"
+
+
+def _title(it, redact: bool) -> str:
+    return PRIVATE_LABEL if (redact and getattr(it, "reveal", "household") == "sensitive") else it.title
+
+
+def _timeline_label(it, tz, redact: bool = False) -> str:
+    title = _title(it, redact)
     if it.when.kind == ALLDAY:
-        return f"{it.title} (all day)"
+        return f"{title} (all day)"
     if it.when.kind == AT and it.when.start is not None:
-        return f"{_clock(it.when.start, tz)} {it.title}"
-    return it.title
+        return f"{_clock(it.when.start, tz)} {title}"
+    return title
 
 
-def _due_label(it, now: float, tz) -> str:
+def _due_label(it, now: float, tz, redact: bool = False) -> str:
+    title = _title(it, redact)
     when = it.when.start
     if when is None:
-        return f"{it.title} — to do"
+        return f"{title} — to do"
     if when <= now:
-        return f"{it.title} — overdue"
+        return f"{title} — overdue"
     same_day = datetime.fromtimestamp(when, tz).date() == datetime.fromtimestamp(now, tz).date() if tz \
         else datetime.fromtimestamp(when).date() == datetime.fromtimestamp(now).date()
-    return f"{it.title} — due today" if same_day else f"{it.title} — due {_clock(when, tz)}"
+    return f"{title} — due today" if same_day else f"{title} — due {_clock(when, tz)}"
 
 
 def build(view: AgendaView, now: float, *, weather: str | None = None,
           zones: dict | None = None, tz=None, recap_line: str | None = None,
-          due_horizon_s: float = DEFAULT_DUE_HORIZON_S) -> Briefing:
+          due_horizon_s: float = DEFAULT_DUE_HORIZON_S, redact: bool = False) -> Briefing:
     """Fold today's slice of the Agenda into the capped morning shape. Pure: same inputs →
     same Briefing, so the speak/screen/push surfaces all agree and a test pins every cap."""
     today = view.today(now)
@@ -132,7 +143,7 @@ def build(view: AgendaView, now: float, *, weather: str | None = None,
     if len(chosen) < TIMELINE_MAX:
         chosen = chosen + routines[:TIMELINE_MAX - len(chosen)]
     chosen.sort(key=lambda it: it.sort_key(now))           # display chronologically
-    timeline = [_timeline_label(it, tz) for it in chosen]
+    timeline = [_timeline_label(it, tz, redact) for it in chosen]
     timeline_overflow = max(0, len(timed) - len(chosen))
 
     # The due lane: deadlined items within the horizon first, then undated FLOAT to-dos
@@ -140,7 +151,7 @@ def build(view: AgendaView, now: float, *, weather: str | None = None,
     deadlined = view.due(now, due_horizon_s)
     undated = [it for it in today if it.when.kind == FLOAT and it.kind == DUE]
     due_items = deadlined + undated
-    due = [_due_label(it, now, tz) for it in due_items[:DUE_MAX]]
+    due = [_due_label(it, now, tz, redact) for it in due_items[:DUE_MAX]]
     due_overflow = max(0, len(due_items) - DUE_MAX)
 
     plan: RoutePlan = sequence(today, now, cost=zone_cost(zones or {}), tz=tz)

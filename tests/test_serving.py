@@ -7,7 +7,7 @@ Run: python3 -m unittest discover -s tests
 """
 import unittest
 
-from core.serving import LatencySLO, WarmPolicy
+from core.serving import LatencySLO, RejectionRate, WarmPolicy
 
 
 class Clock:
@@ -96,6 +96,24 @@ class WarmPolicyTests(unittest.TestCase):
         for _ in range(10):        # repeated close wakes would blow past max without the cap
             warm.note_wake()
         self.assertLessEqual(warm.warm_window_s(), 600.0)
+
+
+class RejectionRateTests(unittest.TestCase):
+    def test_rate_is_fraction_over_the_window(self) -> None:
+        r = RejectionRate(window=4)
+        self.assertEqual(r.rate(), 0.0)               # honest-empty
+        for rej in (True, False, False, False):
+            r.record(rej)
+        self.assertAlmostEqual(r.rate(), 0.25)        # 1 of 4
+        self.assertEqual(r.summary()["rejections"], 1)
+
+    def test_window_rolls(self) -> None:
+        r = RejectionRate(window=2)
+        r.record(True); r.record(True)
+        self.assertEqual(r.rate(), 1.0)
+        r.record(False); r.record(False)              # oldest two drop out
+        self.assertEqual(r.rate(), 0.0)
+        self.assertEqual(r.attempts, 4)               # lifetime total is unbounded
 
 
 if __name__ == "__main__":
