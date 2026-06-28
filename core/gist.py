@@ -22,6 +22,7 @@ prove the core round-trips.
 """
 from __future__ import annotations
 
+import datetime
 import decimal
 from dataclasses import dataclass, field, replace
 
@@ -262,3 +263,122 @@ def decode_state(data: bytes) -> list[Schema]:
         out.append(Schema(kind, daytype, daypart, tuple(toks),
                           Beta(a_q, b_q), TimeStat(W, S1, S2), day_mass_q))
     return out
+
+
+# --------------------------------------------------------------------------- #
+# Slice 4 — deterministic day-type + daypart classifiers (pinned, float-free)
+# --------------------------------------------------------------------------- #
+GIST_NMIN = 3          # firmness floor to promote obs → rule (mirrors remember.NMIN_DAYS)
+MAX_SCHEMAS = 256      # the hard ceiling on stored behaviour lines (the prune budget)
+
+# Pinned daypart boundaries over local-midnight minutes [0,1440). 'night' wraps both ends.
+_DAYPART_BOUNDS = ((0, "night"), (300, "dawn"), (480, "am"), (720, "mid"),
+                   (960, "pm"), (1140, "eve"), (1320, "night"))
+
+
+def daypart_of(minute: int) -> str:
+    """The pinned daypart for a local-midnight minute. Deterministic, no float, no locale."""
+    if not 0 <= minute < DAY_MINUTES:
+        raise ValueError(f"minute {minute} out of [0,{DAY_MINUTES})")
+    label = "night"
+    for start, lab in _DAYPART_BOUNDS:
+        if minute >= start:
+            label = lab
+        else:
+            break
+    return label
+
+
+def daytype_of(date_iso: str, *, away: bool = False) -> str:
+    """Weekday / weekend / away — the day-type axis that stops Saturday being conflated with
+    Tuesday. `away` (owner not home that day) wins; otherwise Sat/Sun → 'we', else 'wd'."""
+    if away:
+        return "aw"
+    return "we" if datetime.date.fromisoformat(date_iso).weekday() >= 5 else "wd"
+
+
+# --------------------------------------------------------------------------- #
+# Slice 5 — the nightly fold: events → schemas, with counted absence + a hard prune
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class DayObs:
+    """One fold input: an event fired at `minute` (0..1439 local) carrying identity `tokens`
+    (e.g. the topic + zone). The fold keys on the parsed structure, never the string spelling."""
+    minute: int
+    tokens: tuple[str, ...]
+
+
+def _match_key(daytype: str, daypart: str, tokens) -> tuple:
+    """The STRUCTURAL identity the fold matches on — kind is excluded so an obs that earns
+    promotion to rule keeps folding into the same line (kind is derived, never a split-key)."""
+    return (daytype, daypart, tuple(sorted(tokens)))
+
+
+def _kind_for(beta: Beta, prior_kind: str) -> str:
+    """obs until there's enough evidence (firmness ≥ nmin), then rule. `seq` is preserved as-is
+    (sequence lines are a later milestone, not produced by this single-event fold)."""
+    if prior_kind == "seq":
+        return "seq"
+    return "rule" if firmness(beta) >= GIST_NMIN else "obs"
+
+
+def _payoff(s: Schema) -> int:
+    """A schema's predictive worth for the prune: posterior confidence × evidence depth. Noise
+    (low confidence, shallow evidence) sinks to the bottom and is dropped first. Integer."""
+    return confidence_q(s.beta) * (firmness(s.beta) + 1)
+
+
+def _prune_to_ceiling(schemas: list[Schema], max_schemas: int) -> list[Schema]:
+    """Bound the stored schema count (the storage-forever guarantee). A pragmatic stand-in for
+    the MDL ideal: keep the most predictive `max_schemas`, drop the rest. Deterministic
+    tie-break on the canonical key so the survivor set is replay-stable."""
+    if len(schemas) <= max_schemas:
+        return schemas
+    ordered = sorted(schemas, key=lambda s: (-_payoff(s), s.key()))
+    return ordered[:max_schemas]
+
+
+def fold_day(prior: list[Schema], observations: list[DayObs], *, daytype: str,
+             nmin: int = GIST_NMIN, max_schemas: int = MAX_SCHEMAS,
+             off_zones=frozenset()) -> list[Schema]:
+    """Fold one day of raw events into the schema state — the heart of the nightly distill.
+
+    Deterministic and integer-only. The night's work, in order:
+      1. age the prior state by one night (`decay_q`);
+      2. for each fire, α += SCALE on its (daytype, daypart, tokens) line + fold its minute;
+      3. **counted absence** — every existing line of *today's* daytype that did NOT fire gets
+         β += SCALE, so a stopped routine mean-reverts within days (anti-fossilization);
+      4. derive each line's kind (obs→rule at the nmin firmness floor);
+      5. drop lines faded to nothing and any referencing an off-limits zone (the OFF-fence);
+      6. prune to the hard ceiling so the stored count is bounded forever.
+    """
+    decayed = [s.decayed(1) for s in prior]
+    seqs = [s for s in decayed if s.kind == "seq"]               # passthrough (later milestone)
+    by_match: dict[tuple, Schema] = {
+        _match_key(s.daytype, s.daypart, s.tokens): s for s in decayed if s.kind != "seq"}
+
+    fired: set[tuple] = set()
+    for obs in observations:
+        toks = tuple(sorted(obs.tokens))
+        if off_zones and any(t in off_zones for t in toks):     # OFF-fence at ingest
+            continue
+        mk = (daytype, daypart_of(obs.minute), toks)
+        cur = by_match.get(mk) or Schema(kind="obs", daytype=daytype, daypart=mk[1], tokens=toks)
+        cur = replace(cur, beta=Beta(cur.beta.a_q + SCALE, cur.beta.b_q),
+                      time=cur.time.add(obs.minute), day_mass_q=cur.day_mass_q + SCALE)
+        by_match[mk] = cur
+        fired.add(mk)
+
+    for mk, s in list(by_match.items()):                        # counted absence
+        if s.daytype == daytype and mk not in fired:
+            by_match[mk] = replace(s, beta=Beta(s.beta.a_q, s.beta.b_q + SCALE))
+
+    out: list[Schema] = []
+    for s in by_match.values():
+        if off_zones and any(t in off_zones for t in s.tokens):  # OFF-fence at write
+            continue
+        if s.beta.a_q + s.beta.b_q < 1 and s.day_mass_q < 1:     # faded to nothing → forget
+            continue
+        out.append(replace(s, kind=_kind_for(s.beta, s.kind)))
+    out += seqs
+    return _prune_to_ceiling(out, max_schemas)
