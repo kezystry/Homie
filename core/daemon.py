@@ -42,6 +42,7 @@ from core.bus import Bus
 from core.canonical import ha_canonical
 from core.clock import Clock
 from core.cockpit_bridge import CockpitBridge
+from core.confirm_responder import ConfirmResponder
 from core.consent import Consent
 from core.mesh import Link, MeshBridge
 from core.reason import LLMClient, NullLLMClient, Reason
@@ -95,11 +96,12 @@ class Daemon:
     order (Remember LAST); `stop()` tears it down; `run_forever()` parks until the
     service is stopped. Tests inspect `.bus`, `.remember`, `.sup`, etc. directly."""
 
-    def __init__(self, *, bus, remember, consent, sup, act, reconciler, reason,
+    def __init__(self, *, bus, remember, consent, confirm, sup, act, reconciler, reason,
                  voice, anchor, cockpit, mesh, clock, home, perception, config: DaemonConfig) -> None:
         self.bus = bus
         self.remember = remember
         self.consent = consent
+        self.confirm = confirm        # turns a chat yes/no into a confirm.response (Consent answerable)
         self.sup = sup
         self.act = act
         self.reconciler = reconciler
@@ -122,6 +124,7 @@ class Daemon:
 
         # --- the one correct wiring order ------------------------------------- #
         await self.consent.start()
+        await self.confirm.start()            # makes the consent gate answerable from chat
         await self.act.start()
         await self.voice.start()              # the muzzle: live BEFORE any tile can speak
         self.reconciler.attach(self.home)     # human state-changes -> friction
@@ -198,6 +201,7 @@ class Daemon:
         await self.clock.stop()
         await self.reason.stop()
         await self.voice.stop()
+        await self.confirm.stop()
         if self.anchor is not None:
             await self.anchor.stop()
         if self.cockpit is not None:
@@ -232,6 +236,7 @@ def build_daemon(home, perception: Perception | None, *, config: DaemonConfig | 
               compact_threshold=config.compact_threshold)
     remember = Remember()
     consent = Consent(bus)
+    confirm = ConfirmResponder(bus)   # the missing producer: a chat yes/no answers a confirm (N10)
     # ONE capability registry, shared by reference with both the minter (Supervisor's
     # ctx.act) and the verifier (Act). This is the single wiring that makes least-privilege
     # true: a tile can only drive what its manifest declares, at the priority it declares,
@@ -264,7 +269,7 @@ def build_daemon(home, perception: Perception | None, *, config: DaemonConfig | 
     mesh = MeshBridge(config.node_id, bus, config.mesh_link) if config.mesh_link is not None else None
     clock = Clock(bus, now=config.now, tick_seconds=config.tick_seconds, morning_hour=config.morning_hour)
 
-    return Daemon(bus=bus, remember=remember, consent=consent, sup=sup, act=act,
+    return Daemon(bus=bus, remember=remember, consent=consent, confirm=confirm, sup=sup, act=act,
                   reconciler=reconciler, reason=reason, voice=voice, anchor=anchor,
                   cockpit=cockpit, mesh=mesh, clock=clock, home=home, perception=perception,
                   config=config)

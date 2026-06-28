@@ -74,8 +74,11 @@ This is the *whole* near-term build. Everything else is deferred.
 
 Plus the one real prerequisite the audit flagged:
 
-- **`confirm.response` producer** — a cockpit/phone Y/N source, so Consent stops being a 30s
-  fail-safe-no into the void. Without it, no guarded action can ever actually be approved.
+- ✅ **`confirm.response` producer SHIPPED** — `core/confirm_responder.py`: a plain chat yes/no
+  now answers a pending confirmation (only while one is open + recent, so normal chat is never
+  hijacked). Consent is answerable at last; the cockpit shows the question, the trusted core does
+  the translation. Tests in `tests/test_confirm.py`. This was the prerequisite without which no
+  guarded action could ever actually be approved — now unblocked.
 
 ## KEEP THE LAW, not the apparatus
 

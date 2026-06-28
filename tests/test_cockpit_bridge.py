@@ -37,15 +37,18 @@ class PolicyTests(unittest.TestCase):
         self.assertTrue(p.may_send("actuator.done"))
         self.assertTrue(p.may_send("chat.reply"))
         self.assertTrue(p.may_send("wake.decision"))  # cortex wake telemetry (M3)
+        self.assertTrue(p.may_send("confirm.requested"))  # "are you sure?" — shown so it can be answered
         # the cockpit may SEE wake telemetry but may never PUBLISH it back
         self.assertFalse(p.may_receive("wake.decision"))
+        # the cockpit answers a confirm with a plain chat yes/no — it never publishes the
+        # response (or any drive) directly; the trusted ConfirmResponder does the translation.
+        self.assertFalse(p.may_receive("confirm.response"))
         # but NOT the raw, ungoverned speech channel — only the VoiceGate's output renders,
         # so a tile can never reach the owner without passing the speech budget (Phase A).
         self.assertFalse(p.may_send("interface.say"))
         # ...nor raw perception internals or the act *request*
         self.assertFalse(p.may_send("actuator.requested"))
         self.assertFalse(p.may_send("sensor.camera.frame"))
-        self.assertFalse(p.may_send("confirm.requested"))
 
     def test_inbound_is_chat_only(self) -> None:
         p = CockpitPolicy()
