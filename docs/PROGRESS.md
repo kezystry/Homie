@@ -5,11 +5,12 @@ the **what & why**; this file is the **how it's going**. Updated every time a mi
 lands or a decision is taken.*
 
 - **Branch:** `claude/homie-overview-bo4l8v`
-- **Tests:** 467 passing (`python3 -m unittest discover -s tests`) — green on every push
-- **Last updated:** 2026-06-27, after **Phase A — the SpeechBudget muzzle** (one global cap on
-  owner-facing speech, the anti-nag waist), following the master-vision brainstorm + its external
-  audit. The audit's scope filter is now binding in [`docs/SCOPE.md`](SCOPE.md): build the **six-thing
-  soul**, defer the rest. Prior: **M6** (serving discipline), the **HA adapter**, **GIST slice 2**.
+- **Tests:** 497 passing (`python3 -m unittest discover -s tests`) — green on every push
+- **Last updated:** 2026-06-28, after the **Camera foundation** (registry + positive zone-allowlist +
+  go2rtc/Frigate config-gen + the edge adapter where frames die — see [`docs/CAMERA.md`](CAMERA.md)) and
+  the **external-audit safety pass** (FIFO confirm queue + exact-match yes/no + the Coherence test that
+  closes the speech-bypass). Prior: **Phase A** (the SpeechBudget muzzle), **M6** (serving discipline),
+  the **HA adapter** (driving the owner's real DIRIGERA bulbs), **GIST slice 2**.
 
 > **Updating the Homie box.** The box runs a git checkout at `/opt/homie`; update with
 > `python3 scripts/update.py` (pulls + runs the suite as a health check, reports safe/not),
@@ -46,7 +47,10 @@ PB   ✅ core      Phase B — honest beliefs: prob∈[0,1] + mean-revert + nmin
 PC   ✅ done     Phase C — first win: "What Homie Knows" page ✅ · Agenda+Briefing+route ✅ ·
                  morning wiring ✅ (clock fires time.morning → ONE governed line + screen page);
                  backward recap line + HA calendar/weather sources + correction next
-PD   🔄 building  Phase D — the undo button: confirm gate ✅ · Friction Ledger ✅ · re-drive next
+PD   🔄 building  Phase D — the undo button: confirm gate ✅ (FIFO + exact-match, audit-hardened) ·
+                 Friction Ledger ✅ · re-drive next
+CAM  ✅ founded   Camera foundation — registry + positive zone-allowlist + go2rtc/Frigate config-gen
+                 + edge adapter (frames die at the Pi) + the Coherence test. Box wiring next.
 M7   ⏳ planned    Positive-schema privacy guard + Dream Journal (retrieval)
 M8   ⏳ planned    Friction Ledger pane + one-key undo
 M9   ⏳ planned    Deploy posture + confinement

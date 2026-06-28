@@ -25,15 +25,16 @@
   M0–M11); `docs/PROGRESS.md` is the living status board (how it's going — keep it updated
   in the same commit as each milestone).
 - **Engineering:** `docs/INTERNALS.md` (decisions), `docs/PROTOCOL.md` (tile wire
-  protocol), `docs/SECURITY.md` (privacy/identity), `docs/ARCHITECTURE.md`, `os/`
-  (dual-boot NixOS + `INSTALL.md`).
+  protocol), `docs/SECURITY.md` (privacy/identity), `docs/ARCHITECTURE.md`, `docs/CAMERA.md`
+  (the camera foundation: live/NVR/privacy contract), `os/` (dual-boot NixOS + `INSTALL.md`).
 - **Code:** `core/` (`bus`, `remember` (now with honest `prob`/`firm` beliefs), `tile`
   runtime + channels, `clock`, `mesh`, `act` + `capability`, `reason` (cortex) + `serving`,
   `reconcile`, `consent`, `canonical`, `ritual`, `gist`; the anti-nag waist `voice` +
   `speech_budget`; the morning surface `journal` + `recap` + `agenda` + `briefing` + `route`;
-  the HA hand `ha` + `ws` + `ha_discovery`), `tiles/` (`personal`, `security`, `lighting`),
-  `tests/` (443 passing), `scripts/` (`run.py` daemon, `ha_setup.py`, `ha_light.py`,
-  `spine_demo.py`, `status.py`).
+  the HA hand `ha` + `ws` + `ha_discovery`; the eyes `camera` (registry + zone-allowlist +
+  go2rtc/Frigate config-gen)), `perception/` (`frigate_adapter` — frames die at the edge),
+  `tiles/` (`personal`, `security`, `lighting`), `tests/` (497 passing), `scripts/` (`run.py`
+  daemon, `ha_setup.py`, `ha_light.py`, `camera_setup.py`, `spine_demo.py`, `status.py`).
 - **Importable notes:** `obsidian/` is a cross-linked Obsidian vault mirroring the docs.
 
 ## Decided architecture (see docs/PLAN.md)

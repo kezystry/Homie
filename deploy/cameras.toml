@@ -1,0 +1,53 @@
+# Homie's eyes — the ONE place a camera becomes real.
+#
+# Plug in a camera at any time: add a [camera.<name>] stanza here, run
+# `python3 scripts/camera_setup.py` to regenerate the live + NVR configs, and it's live.
+# Nothing else in the system needs editing — the registry (core/camera.py) is the single
+# source of truth, and the same allowlist below drives BOTH the on-box services and the
+# in-process detection adapter.
+#
+# ── What each field means ────────────────────────────────────────────────────────────────
+#   source      (required) the camera's RTSP url. NEVER paste a password in this file — use
+#               ${RTSP_PW} and put the secret in /etc/homie-cameras.env on the box. The repo
+#               is public; credentials live only on your machine.
+#   zones       the POSITIVE allowlist of detection zones. A detection only becomes a Homie
+#               event if it happens in a zone listed here. Empty zones = live-view-only: you
+#               can watch the camera, but it never emits a single detection. (You draw each
+#               zone's actual shape once in the Frigate web UI; this file just names them.)
+#   detect      which objects to track. One or more of: person, car, bicycle, motorcycle,
+#               dog, cat, package. Defaults to ["person"].
+#   record      keep continuous NVR recording for this camera (default true).
+#   on_property true only if the camera's whole field of view is on YOUR property. This is a
+#               legal line, not a preference (Ryneš, C-212/13 — see docs/SECURITY.md): a
+#               camera that sees the public street may stream live but must NEVER run identity
+#               inference. If on_property = false, `identify` is forced off, structurally.
+#   identify    let Homie tell "the same unknown returned" apart (a short-lived, on-device,
+#               vector-only faceprint — no photos). Off by default; only ever honored when
+#               on_property = true.
+#   width/height/fps   leave at 0 (the default) for NATIVE quality and frame rate — Homie's
+#               live path never transcodes, so 0 means "exactly what the sensor produces."
+#
+# These are EXAMPLES. Replace them with your real cameras (or delete them — an empty file is
+# valid and simply means Homie has no eyes yet).
+
+[camera.front_door]
+source = "rtsp://homie:${RTSP_PW}@192.168.1.50:554/stream1"
+zones = ["porch", "path"]
+detect = ["person", "package"]
+record = true
+on_property = true
+identify = true
+
+[camera.driveway]
+source = "rtsp://homie:${RTSP_PW}@192.168.1.51:554/stream1"
+zones = ["driveway"]            # the pavement is deliberately NOT a zone — it's not ours to watch
+detect = ["person", "car"]
+record = true
+on_property = true
+
+[camera.garden]
+source = "rtsp://homie:${RTSP_PW}@192.168.1.52:554/stream1"
+zones = []                      # live-view only: watchable from your phone, emits nothing
+detect = ["person"]
+record = false
+on_property = true
