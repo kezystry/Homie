@@ -10,7 +10,8 @@ Run: python3 -m unittest discover -s tests
 import unittest
 
 from core.speech_budget import (
-    EXEMPT_KINDS, Mute, SpeechBudget, SpeechGovernor, SpeechLedger, is_exempt,
+    EXEMPT_KINDS, AdaptiveAllowance, Mute, SpeechBudget, SpeechGovernor, SpeechLedger,
+    is_exempt,
 )
 
 HOUR = 3600.0
@@ -118,6 +119,54 @@ class GovernorTests(unittest.TestCase):
         self.assertTrue(all(d.outcome == "budget" for d in deferred))
         # every decision is accounted for as exactly one of spoken/deferred (no silent gap)
         self.assertEqual(len(spoken) + len(deferred), 4)
+
+
+class AdaptiveAllowanceTests(unittest.TestCase):
+    def test_muting_shrinks_the_allowance(self) -> None:
+        a = AdaptiveAllowance(start=6)
+        before = a.daily()
+        a.too_chatty(0.0)
+        self.assertLess(a.daily(), before)          # told to be quiet → learns to talk less
+
+    def test_repeated_mutes_keep_shrinking_to_a_floor(self) -> None:
+        a = AdaptiveAllowance(start=10, lo=1)
+        for _ in range(20):
+            a.too_chatty(0.0)
+        self.assertEqual(a.daily(), 1)              # never silences itself entirely
+
+    def test_tolerated_days_grow_it_back(self) -> None:
+        a = AdaptiveAllowance(start=6, grow=0.5)
+        a.too_chatty(0.0)                            # day 0: annoyed → shrink
+        low = a.value
+        for d in range(1, 6):                        # five days of speaking, no annoyance
+            a.note_spoke(d * DAY)
+        self.assertGreater(a.value, low)            # tolerance earned back, slowly
+
+    def test_a_quiet_day_does_not_grow_it(self) -> None:
+        a = AdaptiveAllowance(start=6)
+        v = a.value
+        a.note_spoke(0.0)                            # day 0: spoke, no annoyance...
+        # roll to day 5 WITHOUT speaking on the intervening days
+        a._roll(5 * DAY)
+        # only the one tolerated rollover (day 0→next) grows it once, then quiet days don't
+        self.assertLessEqual(a.value, v + 0.5 + 1e-9)
+
+    def test_bounded_above(self) -> None:
+        a = AdaptiveAllowance(start=6, hi=14, grow=5)
+        for d in range(1, 10):
+            a.note_spoke(d * DAY)
+        self.assertLessEqual(a.daily(), 14)
+
+
+class GovernorLearningTests(unittest.TestCase):
+    def test_governor_speaks_less_after_being_told_too_chatty(self) -> None:
+        g = SpeechGovernor(budget=SpeechBudget(per_hour=20.0, per_day=6))
+        # day 1: how many proactive lines get through before the learned ceiling?
+        day1 = sum(1 for _ in range(20) if g.decide(0.0).spoken)
+        g.note_too_chatty(0.0)                       # the owner mutes — "too chatty"
+        # day 2: a fresh day, but the learned allowance is now smaller
+        day2 = sum(1 for _ in range(20) if g.decide(DAY).spoken)
+        self.assertLess(day2, day1)                  # it learned to talk less
 
 
 class LedgerTests(unittest.TestCase):

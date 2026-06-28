@@ -77,7 +77,9 @@ class VoiceGate:
         except (TypeError, ValueError):
             seconds = DEFAULT_MUTE_SECONDS
         self.gov.mute.mute(event.ts, seconds)
-        log.info("voice: muted for %.0fs", seconds)
+        # Muting is also a "you're talking too much" signal — Homie learns to be quieter.
+        self.gov.note_too_chatty(event.ts)
+        log.info("voice: muted for %.0fs (learning: quieter)", seconds)
 
     async def _on_unmute(self, event: Event) -> None:
         self.gov.mute.unmute()

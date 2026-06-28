@@ -32,7 +32,7 @@ is lived-in; and **a handful of wants had slipped through with no home** — now
 | Knowing me deeply | ✅ | honest-belief model + "What Homie Knows" page |
 | Morning recap (yesterday) | ✅ | `core/recap.py`, capped, honest |
 | Day briefing (today, what's on, route) | ✅ | `core/agenda/briefing/route.py` — your add, council-designed |
-| Effortlessness / never a nag | ✅ | the SpeechBudget muzzle (~6/day) + mute |
+| Effortlessness / never a nag | ✅ | a self-pacing voice — **learns** how chatty to be from your reactions (muting shrinks it), no hand-set cap + a mute |
 | Adaptive personality (humor vs minimal) | 🅿️ | designed as render-time "ToneState"; deferred (apparatus) |
 | Secret/personal name + duress anti-name | 👤 🅿️ | **now a password** (owner-only, hash-verified, never stored/logged; the spoken-in-chat unlock idea is retired) — you set it |
 | "Feel alive" / anticipates perfectly | 🅿️ | AliveState + silent-anticipation designed; after the basics |
@@ -142,7 +142,7 @@ is lived-in; and **a handful of wants had slipped through with no home** — now
 | Always honest, reads the moment | ✅ | honest-by-construction surfaces (no overclaiming) |
 | Mum's safety can override in a genuine emergency | 🅿️ | guardian judgment rule |
 | Obedient first, real character eventually | ✅ | obedience floor; tone widens later |
-| Worst outcome = a nag | ✅ | the whole muzzle exists for this |
+| Worst outcome = a nag | ✅ | the self-pacing voice exists for this — it learns to shut up |
 
 ## 13 · Devices / reach / hardware
 | You wanted | Status | Notes |

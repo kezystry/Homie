@@ -16,7 +16,8 @@
 ## Where things are
 
 - **Docs live in `docs/`.** `README.md` (root) is the landing page; `CLAUDE.md`
-  (root, this file) is auto-loaded agent context.
+  (root, this file) is auto-loaded agent context. **`docs/CHARTER.md` is the Gerüst —
+  the load-bearing rules that must stay true; read it before any significant change.**
 - **Concept & roadmap:** `docs/OVERVIEW.md`, `docs/DESIGN.md`, `docs/ROADMAP.md`; the
   hardware build plan + the decided always-on topology + the question bank live in
   `docs/PLAN.md`; bring-up order in `docs/BRINGUP.md`; audit backlog in `docs/BACKLOG.md`.

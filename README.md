@@ -134,7 +134,7 @@ flowchart LR
 | **Capability-gated actuation** | ✅ | A tile drives only what its manifest declares, at its declared priority — a forged command is refused, even over the subprocess wire. |
 | **Wake governance** | ✅ | An event-clocked surprise budget wakes the GPU brain only on genuinely novel moments and reports the real asleep-fraction as a number; safety wakes are exempt. |
 | **Home Assistant adapter** | ✅ | Drives real DIRIGERA/Tradfri lights and hears human switch-flips, over a stdlib WebSocket with a liveness heartbeat. |
-| **Anti-nag speech governor** | ✅ | One global cap on how often Homie speaks unprompted (owner-set, ~6/day) + an everyday mute; safety always heard, overflow defers. |
+| **Self-pacing voice** | ✅ | One global governor on unprompted speech that *learns* how chatty to be — muting it shrinks its allowance, a tolerated day grows it; safety always heard, overflow defers. No hand-set cap. |
 | **Honest beliefs** | ✅ | Every learned routine is a true probability in [0,1] that mean-reverts when a habit stops; a coincidence is never stated as fact. |
 | **Morning surface** | ✅ | A plain "what Homie knows" page + a daily recap (yesterday) and briefing (today's agenda + a sensible errand order), capped so it never floods. |
 | **Serving discipline** | ✅ | Local-model latency SLO, warm/cold GPU policy, and JSON-schema-constrained tool decoding (the GPU brain itself is not yet stood up). |
@@ -242,6 +242,8 @@ Full detail in [docs/MASTERPLAN.md](docs/MASTERPLAN.md) · live status in [docs/
 
 | Doc | What it covers |
 |---|---|
+| **[CHARTER](docs/CHARTER.md)** | **the Gerüst — the binding, non-negotiable rules + must-exist features** |
+| [SCOPE](docs/SCOPE.md) · [GOALS-AUDIT](docs/GOALS-AUDIT-2026-06-28.md) | the near-term scope filter + every wanted feature vs its status |
 | [OVERVIEW](docs/OVERVIEW.md) · [DESIGN](docs/DESIGN.md) | the big picture and why it works this way |
 | [ARCHITECTURE](docs/ARCHITECTURE.md) · [INTERNALS](docs/INTERNALS.md) | how it's built and the engineering decisions |
 | [PROTOCOL](docs/PROTOCOL.md) | the tile wire protocol |

@@ -15,10 +15,14 @@ Like the wake ledger, everything here is PURE and EVENT-CLOCKED (driven by event
 timestamps, never wall-clock or randomness) so replaying a fixed event log reproduces
 bit-identical counts. Three cooperating pieces:
 
-  * `SpeechBudget` — *cap it.* A token bucket over proactive utterances (a small per-hour
-    burst capacity plus a hard per-day ceiling). Safety/summons speech bypasses it
-    entirely. Over-budget lines defer to the recap as a LOSSY count — most die unspoken
-    (external audit §4.1: silence is the right default; "never dropped" was a false promise).
+  * `AdaptiveAllowance` — *learn it.* There is NO fixed daily cap. The allowance starts at a
+    sensible default and LEARNS: every time the owner mutes Homie (a "you're talking too much"
+    signal) the allowance shrinks; every day Homie speaks and the owner does NOT mute, it grows
+    a little. So it finds the owner's tolerance on its own instead of obeying a hand-set number.
+  * `SpeechBudget` — *pace it.* A token bucket over proactive utterances (a small per-hour burst
+    capacity so a day's lines can't all land at once) whose daily ceiling is the LEARNED
+    allowance. Safety/summons speech bypasses it entirely. Over-budget lines defer to the recap
+    as a LOSSY count — most die unspoken (external audit §4.1: silence is the right default).
   * `Mute`         — *the owner's own hand.* An everyday "quiet for an hour" / "minimal
     today" the owner sets in the moment, distinct from guest/privacy semantics and
     instantly reversible. The fastest nag-kill is a mute the owner controls.
@@ -34,11 +38,15 @@ from __future__ import annotations
 from collections import Counter, deque
 from dataclasses import dataclass
 
-# Default knobs. The owner chose ~6 proactive lines/day as the starting cap (tunable from
-# his reactions). The per-hour capacity smooths bursts so the six can't all land in one
-# minute; safety/summons are exempt and never counted against either limit.
-PROACTIVE_PER_DAY = 6        # hard daily ceiling on unsolicited owner-facing lines
-PROACTIVE_PER_HOUR = 2.0     # token-bucket burst capacity / refill rate (lines per hour)
+# Default knobs. There is NO fixed daily cap — Homie LEARNS how chatty to be from the owner's
+# reactions (the `AdaptiveAllowance` below). These are only the STARTING point and the bounds it
+# learns within; the per-hour capacity smooths bursts so a day's lines can't all land at once.
+PROACTIVE_PER_DAY_START = 6   # where the learned allowance starts on day one
+PROACTIVE_PER_DAY_MIN = 1     # it never silences itself entirely (a real alert path always exists)
+PROACTIVE_PER_DAY_MAX = 14    # ...nor lets itself become a firehose, however tolerant the owner
+PROACTIVE_PER_HOUR = 2.0      # token-bucket burst capacity / refill rate (lines per hour)
+SHRINK = 0.6                  # a "too chatty" signal (a mute) multiplies the allowance down
+GROW = 0.5                    # a tolerated day (spoke, no mute) nudges it back up
 SECONDS_PER_DAY = 86400
 SECONDS_PER_HOUR = 3600.0
 
@@ -73,7 +81,7 @@ class SpeechBudget:
     ceiling is not yet hit. Starts full so the first line of the day is always free — the
     budget only bites a sustained flood, which is exactly the nag it exists to stop."""
 
-    def __init__(self, *, per_hour: float = PROACTIVE_PER_HOUR, per_day: int = PROACTIVE_PER_DAY) -> None:
+    def __init__(self, *, per_hour: float = PROACTIVE_PER_HOUR, per_day: int = PROACTIVE_PER_DAY_START) -> None:
         self.capacity = float(per_hour)
         self.refill_per_sec = per_hour / SECONDS_PER_HOUR
         self.tokens = float(per_hour)   # start full: the first proactive line is free
@@ -174,25 +182,73 @@ class SpeechLedger:
         }
 
 
+class AdaptiveAllowance:
+    """Learns how many proactive lines/day the owner tolerates — there is no fixed cap.
+
+    Event-clocked and deterministic like everything else. `too_chatty(ts)` (the owner muted, or
+    dismissed a line) multiplies the allowance DOWN; a day that Homie spoke and the owner did
+    NOT signal annoyance nudges it UP at the next day rollover. Bounded so it never silences
+    itself entirely (a real alert path always exists) nor becomes a firehose."""
+
+    def __init__(self, *, start: float = PROACTIVE_PER_DAY_START, lo: float = PROACTIVE_PER_DAY_MIN,
+                 hi: float = PROACTIVE_PER_DAY_MAX, shrink: float = SHRINK, grow: float = GROW) -> None:
+        self.value = float(start)
+        self.lo, self.hi, self.shrink, self.grow = lo, hi, shrink, grow
+        self._day: int | None = None
+        self._spoke = False      # did Homie speak proactively this day?
+        self._annoyed = False    # did the owner signal "too chatty" this day?
+
+    def daily(self) -> int:
+        """The current learned daily ceiling (never below 1)."""
+        return max(1, round(self.value))
+
+    def _roll(self, ts: float) -> None:
+        day = int(ts // SECONDS_PER_DAY)
+        if self._day is None:
+            self._day = day
+            return
+        if day != self._day:
+            if self._spoke and not self._annoyed:   # a tolerated day → earn a little more voice
+                self.value = min(self.hi, self.value + self.grow)
+            self._day, self._spoke, self._annoyed = day, False, False
+
+    def note_spoke(self, ts: float) -> None:
+        self._roll(ts)
+        self._spoke = True
+
+    def too_chatty(self, ts: float) -> None:
+        """The owner told Homie to be quieter (a mute / a dismissed line). Learn from it."""
+        self._roll(ts)
+        self.value = max(self.lo, self.value * self.shrink)
+        self._annoyed = True
+
+
 class SpeechGovernor:
-    """Composes the budget, the mute, and the ledger into one decision. Pure and
-    event-clocked: `decide(ts, kind, source)` is a deterministic function of the inputs
+    """Composes the LEARNED allowance, the budget, the mute, and the ledger into one decision.
+    Pure and event-clocked: `decide(ts, kind, source)` is a deterministic function of the inputs
     and the accumulated state. The order is deliberate — exempt speech is never muted or
-    budgeted (a hazard must always be heard); the owner's mute outranks the budget (his
-    explicit 'shush' beats Homie's own restraint); the budget is the last gate."""
+    budgeted (a hazard must always be heard); the owner's mute outranks the budget (his explicit
+    'shush' beats Homie's own restraint); the budget (paced by the learned allowance) is last."""
 
     def __init__(self, *, budget: SpeechBudget | None = None, mute: Mute | None = None,
-                 ledger: SpeechLedger | None = None) -> None:
+                 ledger: SpeechLedger | None = None, allowance: AdaptiveAllowance | None = None) -> None:
         self.budget = budget or SpeechBudget()
         self.mute = mute or Mute()
         self.ledger = ledger or SpeechLedger()
+        self.allowance = allowance or AdaptiveAllowance(start=self.budget.per_day)
+
+    def note_too_chatty(self, ts: float) -> None:
+        """Feed a 'you're talking too much' signal (a mute / dismissal) into the learning."""
+        self.allowance.too_chatty(ts)
 
     def decide(self, ts: float, *, kind: str = "proactive", source: str | None = None) -> SpeechDecision:
+        self.budget.per_day = self.allowance.daily()   # the ceiling is the LEARNED allowance
         if is_exempt(kind):
             d = SpeechDecision(kind, source, spoken=True, deferred=False, outcome="exempt")
         elif self.mute.quiet(ts):
             d = SpeechDecision(kind, source, spoken=False, deferred=True, outcome="muted")
         elif self.budget.allow(ts):
+            self.allowance.note_spoke(ts)
             d = SpeechDecision(kind, source, spoken=True, deferred=False, outcome="spoken")
         else:
             d = SpeechDecision(kind, source, spoken=False, deferred=True, outcome="budget")

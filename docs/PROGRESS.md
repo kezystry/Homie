@@ -41,7 +41,7 @@ M3   ✅ shipped   Wake telemetry → calibrated surprise → enforced budget
 M4   ✅ shipped   The hour-shaped lesson, spoken back
 M5   ✅ shipped   Capability-gated act path — no faked commands (closes C2/C14)
 M6   ✅ shipped   8B-on-3060 serving discipline — latency SLO, warm/cold, tool grammar
-PA   ✅ shipped   Phase A — SpeechBudget muzzle: one global cap on owner-facing speech (anti-nag)
+PA   ✅ shipped   Phase A — Self-pacing voice: one governor that LEARNS how chatty to be (anti-nag)
 PB   ✅ core      Phase B — honest beliefs: prob∈[0,1] + mean-revert + nmin (fixes the >1.0 bug)
 PC   🔄 building  Phase C — first win: "What Homie Knows" page ✅ · Agenda+Briefing+route ✅ ·
                  morning wiring ✅ (clock fires time.morning → ONE governed line + screen page);
