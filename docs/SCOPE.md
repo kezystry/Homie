@@ -35,6 +35,17 @@ This is the *whole* near-term build. Everything else is deferred.
 3. **The Recap Composer** — a deterministic, template-first morning note (Yesterday / Learned /
    Watching / Tidied), caps enforced *in code* (one Learned, one Watching, honest-empty),
    overflow collapsed lossily, written even with no LLM.
+   - ➕ **Day Briefing (owner-added) + the smart organizing system** — a design council
+     (`tasks/wetqnn944`) specified ONE typed **Agenda** with two renders (backward recap,
+     forward briefing). ✅ **Core shipped:** `core/agenda.py` (typed `AgendaItem` + temporal
+     union + pure `AgendaView` with deterministic dedup/merge, fact-beats-routine + HA
+     calendar/todo/weather + `beliefs()` adapters), `core/route.py` (honest **offline**
+     errand-sequencer — fixed appointments immovable, conflicts flagged, zone-ordinal
+     proximity via owner-authored `deploy/zones.toml`; live map-routing is the gated
+     `cost()`-seam upgrade), `core/briefing.py` (frozen-cap render: timeline≤3, due≤2,
+     route≤1, weather woven, honest-empty, ONE budgeted spoken line). Tests:
+     `tests/test_agenda.py`. ⏳ **Next:** the bus-wiring tile (assemble at morning, emit the
+     one budgeted `interface.say`, surface on the status page) + the backward recap line.
 4. **The "What Homie Knows" page + `memory.overlay`** — plain rows from the GIST brief, each
    with a confidence word + provenance ("from 32 days" vs "from 3 days"), three one-tap
    actions ([that's me] / [not quite] / [lock]).

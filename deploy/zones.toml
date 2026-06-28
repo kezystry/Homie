@@ -1,0 +1,19 @@
+# The owner-authored "loop" map for the OFFLINE errand-sequencer (core/route.py).
+#
+# This is the ENTIRE spatial model Homie has until live map-routing is gated on (which is
+# online, asked-per-use). No coordinates, no geocoding, no traffic — just a coarse ordinal
+# for each place along your habitual loop OUT from home and back. The sequencer orders
+# flexible errands so they don't make you backtrack; it never claims a drive time or a
+# "fastest route" it didn't measure.
+#
+# How to read it: home is 0. Number your regular spots by roughly how far along your usual
+# loop they sit (1 = nearest/first, larger = further out). Ties are fine. Edit this over SSH
+# from your phone any time; a missing/empty file just means Homie falls back to pure time
+# order (honest, not broken).
+#
+# These are EXAMPLES — replace the zone names with your real ones.
+[zones]
+home = 0
+south = 1      # e.g. the post office / corner shop end
+mid = 2        # e.g. the bakery / pharmacy strip
+north = 3      # e.g. the clinic / town-centre end
