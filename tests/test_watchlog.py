@@ -124,6 +124,25 @@ class TrackerTests(unittest.IsolatedAsyncioTestCase):
             await tr.stop(); await bus.aclose()
             self.assertEqual(wl.sessions(), [])          # nothing recorded while private
 
+    async def test_current_answers_what_am_i_watching(self) -> None:
+        with TemporaryDirectory() as d:
+            bus = Bus()
+            wl = WatchLog(Path(d) / "watch.json")
+            now_path = Path(d) / "now.json"
+            tr = WatchTracker(bus, wl, tz="UTC", now_path=now_path)
+            await tr.start()
+            await bus.publish(Event("media.activity", ts(26, 21),
+                                    {"app": "stremio", "state": "playing", "title": "Dune", "kind": "film"}))
+            await bus.drain()
+            self.assertEqual(tr.current()["title"], "Dune")     # live answer
+            self.assertTrue(now_path.exists())                  # marker written for the status page
+            await bus.publish(Event("media.activity", ts(26, 23),
+                                    {"app": "stremio", "state": "stopped", "title": "Dune"}))
+            await bus.drain()
+            self.assertIsNone(tr.current())                     # stopped → nothing now
+            self.assertFalse(now_path.exists())
+            await tr.stop(); await bus.aclose()
+
     async def test_a_blip_is_ignored(self) -> None:
         with TemporaryDirectory() as d:
             bus, wl, tr = await self._setup(d)

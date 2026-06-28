@@ -217,13 +217,38 @@ class WatchTracker:
     or a >30-min gap closes the current session and records it (if it lasted a minute+). The
     one-tap `media.private` pause stops recording outright — nothing is stored while it's on."""
 
-    def __init__(self, bus, log_store: WatchLog, *, tz: str | None = None) -> None:
+    def __init__(self, bus, log_store: WatchLog, *, tz: str | None = None,
+                 now_path: Path | str | None = None) -> None:
         self.bus = bus
         self.store = log_store
         self._tz = ZoneInfo(tz) if tz else None
         self._open: dict | None = None       # {title, kind, app, start, last}
         self._private = False
+        self._now_path = Path(now_path) if now_path else None   # live "now playing" marker
         self._subs: list = []
+
+    def current(self) -> dict | None:
+        """What's playing RIGHT NOW (title/kind/app), or None when nothing is — the live answer
+        to 'what am I watching?'. Reflects the open session; cleared on stop/private."""
+        if not self._open:
+            return None
+        return {"title": self._open["title"], "kind": self._open["kind"], "app": self._open["app"],
+                "since": self._open["start"]}
+
+    def _write_now(self) -> None:
+        """Persist the live now-playing marker so the running Homie (status page / a question)
+        can answer 'what am I watching?'. Deleted when nothing is playing."""
+        if self._now_path is None:
+            return
+        try:
+            cur = self.current()
+            if cur is None:
+                self._now_path.unlink(missing_ok=True)
+            else:
+                self._now_path.parent.mkdir(parents=True, exist_ok=True)
+                self._now_path.write_text(json.dumps(cur, separators=(",", ":")), "utf-8")
+        except Exception:
+            pass   # the live marker is a courtesy, never fatal
 
     async def start(self) -> None:
         self._subs = [self.bus.subscribe(MEDIA, self._on_media, owner="watch"),
@@ -240,6 +265,7 @@ class WatchTracker:
         if self._private:
             self._finalize(self._open["last"] if self._open else 0.0)  # close + record what's done
             self._open = None
+            self._write_now()                            # clear the live marker while private
         log.info("watch: screen-private %s", "on" if self._private else "off")
 
     async def _on_media(self, event: Event) -> None:
@@ -258,6 +284,9 @@ class WatchTracker:
                           "app": str(p.get("app", "")), "start": ts, "last": ts}
         else:
             self._open["last"] = ts
+        if str(p.get("state")) == "stopped":
+            self._finalize(ts)                           # a stop closes + records the session
+        self._write_now()                                # refresh the live "now playing" marker
 
     def _finalize(self, end: float) -> None:
         o = self._open

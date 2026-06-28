@@ -216,6 +216,14 @@ def runtime_facts(state_dir: Path | None) -> dict:
 
     # The recommendation page: your watch history → taste + predictions + picks (best-effort,
     # guarded — a missing/odd watch.json never breaks the status page).
+    # Live "now playing" — the answer to "what am I watching right now?".
+    now_path = state / "now.json"
+    if now_path.exists():
+        try:
+            facts["now_watching"] = json.loads(now_path.read_text("utf-8"))
+        except Exception:
+            pass
+
     watch_path = state / "watch.json"
     if watch_path.exists():
         try:
@@ -454,6 +462,9 @@ def render_text(facts: dict, *, color: bool = True, width: int = 64) -> str:
                 L.append(f"    · {l['tile']}: dark in the {c(l['room'], 'ok')} at {hrs}")
         else:
             L.append(c("    (no lessons learned yet)", "dim"))
+        now = rt.get("now_watching")
+        if now:
+            L.append(c(f"  ▶ now watching: {now.get('title')} ({now.get('app')})", "dim"))
         knows = rt.get("knows") or []
         if knows:
             L.append(c("  what Homie knows about you:", "dim"))

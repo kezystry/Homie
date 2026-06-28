@@ -342,7 +342,7 @@ def build_daemon(home, perception: Perception | None, *, config: DaemonConfig | 
     # record of what he watches, powering the recommendation page. Separate from the title-free
     # GIST. Records media.activity sessions; honors the one-tap screen-private pause.
     watch = (WatchTracker(bus, WatchLog(Path(config.state) / "watch.json"),
-                          tz=os.environ.get("HOMIE_TZ"))
+                          tz=os.environ.get("HOMIE_TZ"), now_path=Path(config.state) / "now.json")
              if config.state is not None else None)
 
     # The live morning feed: real HA calendar/to-do/weather → agenda.external, folded by the
