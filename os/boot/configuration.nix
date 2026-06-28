@@ -164,12 +164,16 @@
     after = [ "network-online.target" ];
     wants = [ "network-online.target" ];
     path = [ pkgs.git ];
+    environment.HOMIE_STATE = "/var/lib/homie";
     serviceConfig = {
       Type = "oneshot";
       WorkingDirectory = "/opt/homie";
-      # --auto: roll back to last-good if the pulled code fails the suite; --restart: apply a
-      # healthy, non-authority update. Needs root to git-pull and restart the service.
-      ExecStart = "${pkgs.python311}/bin/python3 /opt/homie/scripts/update.py --auto --restart";
+      # --nightly: the full self-renewal. It DEFERS (no pull, no restart) if a film/show is
+      # playing or the daemon's last consolidation found the home active, else it runs --auto
+      # (roll back to last-good on a failed suite) --restart (apply a healthy, non-authority
+      # update) and records a one-word outcome the daemon speaks in the morning. Needs root to
+      # git-pull and restart the service; reads /var/lib/homie/now.json + nightly.report.
+      ExecStart = "${pkgs.python311}/bin/python3 /opt/homie/scripts/update.py --nightly";
     };
   };
 

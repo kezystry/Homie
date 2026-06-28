@@ -29,6 +29,7 @@ not a rewrite.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import time
@@ -56,7 +57,8 @@ from core.reconcile import StateReconciler
 from core.selfimprove import ImproveTracker
 from core.remember import Remember
 from core.gist_store import GistCollector, GistStore
-from core.ritual import consolidate
+from core.overnight import OvernightDesk
+from core.ritual import RitualGates, consolidate
 from core.watchdog import Watchdog
 from core.watchlog import WatchLog, WatchTracker
 from core.tile import Event, Supervisor
@@ -118,7 +120,7 @@ class Daemon:
 
     def __init__(self, *, bus, remember, consent, confirm, ledger, undo, commands, improve, sup, act, reconciler, reason,
                  voice, anchor, cockpit, mesh, clock, home, perception, config: DaemonConfig,
-                 ha_agenda=None, groundskeeper=None, gist=None, watch=None) -> None:
+                 ha_agenda=None, groundskeeper=None, gist=None, watch=None, overnight=None) -> None:
         self.bus = bus
         self.remember = remember
         self.consent = consent
@@ -142,6 +144,7 @@ class Daemon:
         self.groundskeeper = groundskeeper  # storage limb (None for in-memory test graphs)
         self.gist = gist              # distilled-memory collector (None for in-memory test graphs)
         self.watch = watch            # watch-history tracker (None for in-memory test graphs)
+        self.overnight = overnight    # nightly morning-word desk (None for in-memory test graphs)
         self.config = config
         self._tasks: list[asyncio.Task] = []
         self.started = False
@@ -160,6 +163,8 @@ class Daemon:
             await self.gist.start()           # buffer the day's life-shape for the nightly distill
         if self.watch is not None:
             await self.watch.start()          # record the full watch history (titles + all)
+        if self.overnight is not None:
+            await self.overnight.start()      # the morning word for the nightly self-renewal
         await self.undo.start()               # one-tap reversal: re-drive a row's prior value
         await self.commands.start()           # owner-typed /commands in chat
         await self.improve.start()            # count corrections; speak the trend each morning
@@ -222,6 +227,47 @@ class Daemon:
         except Exception:
             log.exception("perception intake exited")
 
+    def _now_playing(self) -> bool:
+        """Is a film/show playing right now? Reads the live `now.json` marker the WatchTracker
+        keeps (present iff playing, removed on stop/private). The nightly routine uses this to
+        fence its disruptive tail — Homie never recycles the box mid-film."""
+        if self.config.state is None:
+            return False
+        try:
+            return (Path(self.config.state) / "now.json").exists()
+        except Exception:
+            return False
+
+    def _take_upgrade_outcome(self) -> str | None:
+        """Read-and-clear the self-upgrade oneshot's outcome note (`upgrade.outcome`), so the
+        morning word can say 'I updated myself' exactly once. Best-effort; a missing/garbled
+        file just means 'no upgrade news'."""
+        if self.config.state is None:
+            return None
+        path = Path(self.config.state) / "upgrade.outcome"
+        try:
+            status = json.loads(path.read_text("utf-8")).get("status")
+        except Exception:
+            return None
+        try:
+            path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        return status if status in ("applied", "rolledback", "held", "deferred") else None
+
+    def _record_overnight(self, report) -> None:
+        """Compose the morning word from the night's work and stash it (spoken once on the next
+        morning), and write the machine-readable report for the upgrade oneshot. Never fatal."""
+        if self.overnight is None:
+            return
+        try:
+            from core.overnight import compose
+            fold = self.gist.last_summary if self.gist is not None else None
+            out = compose(report, fold=fold, upgrade=self._take_upgrade_outcome())
+            self.overnight.record(out, report, media_live=self._now_playing())
+        except Exception:
+            log.exception("housekeep: composing the overnight word failed")
+
     async def _housekeep(self) -> None:
         """In-process compaction floor + nightly consolidation. Running the ritual
         here (not from a systemd timer firing a second process) is deliberate: the
@@ -233,9 +279,11 @@ class Daemon:
                 await asyncio.sleep(self.config.compact_interval)
                 now = self.config.now()
                 if now - last_ritual >= self.config.ritual_interval:
-                    await consolidate(bus=self.bus, remember=self.remember,
-                                      supervisor=self.sup, now=now,
-                                      gist_fold=self.gist.fold if self.gist is not None else None)
+                    report = await consolidate(
+                        bus=self.bus, remember=self.remember, supervisor=self.sup, now=now,
+                        gates=RitualGates(media_live=self._now_playing),
+                        gist_fold=self.gist.fold if self.gist is not None else None)
+                    self._record_overnight(report)
                     last_ritual = now
                 else:
                     await self.bus.maybe_compact(self.remember.snapshot)
@@ -267,6 +315,8 @@ class Daemon:
             await self.gist.stop()
         if self.watch is not None:
             await self.watch.stop()
+        if self.overnight is not None:
+            await self.overnight.stop()
         await self.ledger.stop()
         if self.anchor is not None:
             await self.anchor.stop()
@@ -393,6 +443,13 @@ def build_daemon(home, perception: Perception | None, *, config: DaemonConfig | 
                           tz=os.environ.get("HOMIE_TZ"), now_path=Path(config.state) / "now.json")
              if config.state is not None else None)
 
+    # The morning word for the nightly self-renewal (Charter: silent, smooth). Holds the night's
+    # composed report, speaks ONE plain line on the morning only when something happened (a heal,
+    # an upgrade), and writes the machine-readable `nightly.report` the upgrade oneshot reads to
+    # decide whether it may restart. Built only with a real on-disk state dir.
+    overnight = (OvernightDesk(bus, report_path=Path(config.state) / "nightly.report")
+                 if config.state is not None else None)
+
     # The live morning feed: real HA calendar/to-do/weather → agenda.external, folded by the
     # Personal tile into the briefing. Wired ONLY when the home can answer queries (a real HA
     # client exposes `request`) and at least one entity is configured — otherwise the briefing
@@ -410,4 +467,4 @@ def build_daemon(home, perception: Perception | None, *, config: DaemonConfig | 
     return Daemon(bus=bus, remember=remember, consent=consent, confirm=confirm, ledger=ledger, undo=undo, commands=slash_commands, improve=improve, sup=sup, act=act,
                   reconciler=reconciler, reason=reason, voice=voice, anchor=anchor,
                   cockpit=cockpit, mesh=mesh, clock=clock, home=home, perception=perception, ha_agenda=ha_agenda,
-                  groundskeeper=groundskeeper, gist=gist, watch=watch, config=config)
+                  groundskeeper=groundskeeper, gist=gist, watch=watch, overnight=overnight, config=config)

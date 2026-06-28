@@ -62,6 +62,7 @@ class RitualGates:
     is_someone_home: Callable[[], bool] = _never
     security_live: Callable[[], bool] = _never
     gaming: Callable[[], bool] = _never
+    media_live: Callable[[], bool] = _never   # a film/show is playing — don't recycle the box
 
 
 @dataclass
@@ -128,6 +129,7 @@ async def consolidate(
     _gate(gates.is_someone_home, "home", reasons)
     _gate(gates.security_live, "security", reasons)
     _gate(gates.gaming, "gaming", reasons)
+    _gate(gates.media_live, "media", reasons)
     if reasons:
         report.aborted_disruptive = True
         report.abort_reasons = tuple(reasons)

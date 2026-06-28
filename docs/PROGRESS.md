@@ -5,7 +5,7 @@ the **what & why**; this file is the **how it's going**. Updated every time a mi
 lands or a decision is taken.*
 
 - **Branch:** `claude/homie-overview-bo4l8v`
-- **Tests:** 625 passing (`python3 -m unittest discover -s tests`) — green on every push
+- **Tests:** 651 passing (`python3 -m unittest discover -s tests`) — green on every push
 - **Last updated:** 2026-06-28, after the **Camera foundation** (registry + positive zone-allowlist +
   go2rtc/Frigate config-gen + the edge adapter where frames die — see [`docs/CAMERA.md`](CAMERA.md)) and
   the **external-audit safety pass** (FIFO confirm queue + exact-match yes/no + the Coherence test that
@@ -69,7 +69,13 @@ M7   ⏳ planned    Positive-schema privacy guard + Dream Journal (retrieval)
 M8   ⏳ planned    Friction Ledger pane + one-key undo
 M9   ⏳ planned    Deploy posture + confinement
 M10  ⏳ planned    Visible posture + dream note + trust tiers
-M11  ⏳ planned    Nightly self-refresh: hygiene · heal · upgrade · restart
+M11  ✅ shipped    Nightly self-refresh: hygiene · heal · upgrade · restart — the in-process
+                 consolidate now runs LIVE abort gates (media_live reads now.json: never recycle
+                 mid-film), captures its RitualReport, and composes ONE honest morning word via
+                 core/overnight.py (silent unless a fault healed / an update landed); the upgrade
+                 oneshot is now `update.py --nightly` (defers on a live film / an active home, writes
+                 the outcome the daemon speaks); gist.summarize_fold gives the on-demand "what I
+                 learned last night"; status shows `last night:`.
 ```
 
 Legend: ✅ shipped & pushed · 🔄 in progress · ⏳ planned · ⏸ blocked on a decision
@@ -150,10 +156,13 @@ for what it learns (M4), and a real least-privilege gate on every action (M5).
   cross-machine **privacy guard (M7) matters more** — raw camera/faces must never cross.
 - **Fine-tune go/no-go** (M-later) — accumulate the friction dataset + measurement first;
   evidence authorizes a trainer, or kills it. Default: no weight tuning.
-- **M11 nightly renewal — DECIDED by owner: at midnight Homie does BOTH** a full tidy-up/
-  refresh AND installs real upgrades (two separate steps). Safety rails (panel): keep only a
-  health-checked upgrade with automatic rollback, write down what changed, and never
-  auto-grant new device power without the owner's yes.
+- **M11 nightly renewal — DECIDED by owner, now SHIPPED: at night Homie does BOTH** a full
+  tidy-up/refresh AND installs real upgrades (two separate steps, now coordinated). Safety rails
+  (panel), all in place: a health-checked upgrade with automatic rollback, a written changelog +
+  one honest morning word, never auto-grant new device power without the owner's yes (authority
+  hold), and — the finish — the upgrade DEFERS rather than recycling the box while a film is
+  playing or the home is active (`update.py --nightly` reads `now.json` + the daemon's
+  `nightly.report`; the in-process consolidate runs the live `media_live` abort gate).
 
 ---
 

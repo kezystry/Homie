@@ -245,6 +245,21 @@ def runtime_facts(state_dir: Path | None) -> dict:
         except Exception:
             pass   # a missing/odd watch.json never breaks the status page
 
+    # Last night — the nightly self-renewal's machine-readable report (what it did, whether it
+    # held its disruptive steps because the home was active). Best-effort; never breaks the page.
+    nightly_path = state / "nightly.report"
+    if nightly_path.exists():
+        try:
+            rep = json.loads(nightly_path.read_text("utf-8"))
+            if rep.get("present"):
+                facts["last_night"] = {
+                    "healed": rep.get("healed") or [],
+                    "held_disruptive": bool(rep.get("aborted_disruptive")),
+                    "reasons": rep.get("abort_reasons") or [],
+                }
+        except Exception:
+            pass
+
     # Serving health (M6): the latest reason.served telemetry — how quick the brain was on
     # its last wake, the rolling p95, whether it met the SLO, and the GPU's warm state.
     served = _last_event_payload(state, "reason.served")
@@ -478,6 +493,14 @@ def render_text(facts: dict, *, color: bool = True, width: int = 64) -> str:
         now = rt.get("now_watching")
         if now:
             L.append(c(f"  ▶ now watching: {now.get('title')} ({now.get('app')})", "dim"))
+        ln = rt.get("last_night")
+        if ln:
+            if ln.get("healed"):
+                L.append(c(f"  last night: fixed {', '.join(ln['healed'])}", "dim"))
+            elif ln.get("held_disruptive"):
+                L.append(c(f"  last night: held the disruptive steps ({', '.join(ln['reasons'])})", "dim"))
+            else:
+                L.append(c("  last night: a clean, quiet consolidation", "dim"))
         imp = rt.get("improving")
         if imp:
             arrow = {"down": "↓ fewer", "up": "↑ more", "steady": "≈ steady", "new": "learning"}.get(imp["trend"], imp["trend"])

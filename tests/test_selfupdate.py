@@ -94,6 +94,27 @@ class ChangelogTests(unittest.TestCase):
         self.assertIn("rolled-back", rolled)
 
 
+class UpgradeOutcomeTests(unittest.TestCase):
+    _GREEN = {"ran": True, "ok": True, "count": 300, "duration": 1.0}
+    _CHANGED = {"ok": True, "changed": True, "summary": "a → b"}
+
+    def test_nothing_to_say_when_unchanged(self) -> None:
+        self.assertIsNone(selfupdate.upgrade_outcome({"ok": True, "changed": False},
+                                                     {"ran": None}, [], restarted=False))
+
+    def test_applied_when_restarted(self) -> None:
+        self.assertEqual(selfupdate.upgrade_outcome(self._CHANGED, self._GREEN, ["core/x.py"],
+                                                    restarted=True), "applied")
+
+    def test_rolledback_when_tests_failed(self) -> None:
+        self.assertEqual(selfupdate.upgrade_outcome(self._CHANGED, {"ran": True, "ok": False, "count": 3},
+                                                    ["core/x.py"], restarted=False), "rolledback")
+
+    def test_held_when_authority_touched_but_green(self) -> None:
+        self.assertEqual(selfupdate.upgrade_outcome(self._CHANGED, self._GREEN,
+                                                    ["core/capability.py"], restarted=False), "held")
+
+
 class FormatTests(unittest.TestCase):
     def test_report_mentions_restart_path_when_safe_and_changed(self) -> None:
         out = selfupdate.format_report({"ok": True, "changed": True, "summary": "updated a → b"},

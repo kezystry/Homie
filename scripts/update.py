@@ -15,6 +15,8 @@ HELD for the owner's explicit yes even when green. Every run appends one line to
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import subprocess
 import sys
 from datetime import datetime
@@ -24,6 +26,39 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from core import selfupdate, status  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
+STATE = Path(os.environ.get("HOMIE_STATE", "/var/lib/homie"))
+
+
+def _restart_gate(state: Path) -> tuple[bool, str]:
+    """May the nightly upgrade disrupt the box right now? Reads the live `now.json` marker (a
+    film/show is playing) and the daemon's last `nightly.report` (the home was active when it
+    consolidated). Fail-OPEN on missing info for occupancy (a 2s restart is harmless to someone
+    merely present) but fail-CLOSED on live media — Homie never recycles the box mid-film."""
+    try:
+        if (state / "now.json").exists():
+            return False, "a film/show is playing"
+    except Exception:
+        pass
+    try:
+        rep = json.loads((state / "nightly.report").read_text("utf-8"))
+        if rep.get("present") and rep.get("aborted_disruptive"):
+            return False, "the home was active overnight (" + ", ".join(rep.get("abort_reasons") or []) + ")"
+    except Exception:
+        pass
+    return True, "clear"
+
+
+def _write_outcome(state: Path, status_word: str | None) -> None:
+    """Record the upgrade outcome for the daemon's morning word (spoken once). Best-effort."""
+    if status_word is None:
+        return
+    try:
+        state.mkdir(parents=True, exist_ok=True)
+        tmp = state / "upgrade.outcome.tmp"
+        tmp.write_text(json.dumps({"status": status_word}), "utf-8")
+        os.replace(tmp, state / "upgrade.outcome")
+    except Exception:
+        pass
 
 
 def _git(*args: str) -> subprocess.CompletedProcess:
@@ -55,9 +90,22 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--restart", action="store_true", help="restart homie.service if the update is healthy")
     ap.add_argument("--check", action="store_true", help="health-check the current code without pulling")
     ap.add_argument("--auto", action="store_true", help="nightly mode: auto-rollback to last-good if unsafe")
+    ap.add_argument("--nightly", action="store_true",
+                    help="the full nightly self-renewal: defer if a film is playing / the home is active, "
+                         "else --auto --restart, and record the outcome for the morning word")
     ap.add_argument("--service", default="homie", help="systemd service to restart (default: homie)")
     ap.add_argument("--now", default="", help="timestamp for the changelog (deploy passes date)")
     args = ap.parse_args(argv)
+
+    # --nightly is the self-driving variant: it implies auto-rollback + restart, but first checks
+    # it is safe to disrupt the box, and records a one-word outcome for the daemon to speak.
+    if args.nightly:
+        args.auto = args.restart = True
+        ok, why = _restart_gate(STATE)
+        if not ok:
+            _write_outcome(STATE, "deferred")
+            sys.stdout.write(f"Homie nightly: deferred — {why}. Will try again tomorrow.\n")
+            return 0
 
     before = "" if args.check else _head()
     if args.check:
@@ -91,6 +139,8 @@ def main(argv: list[str]) -> int:
     if pull.get("changed") and not args.check:
         when = args.now or datetime.now().strftime("%Y-%m-%d %H:%M")
         _append_changelog(selfupdate.changelog_line(pull, tests, safe, message, when=when))
+    if args.nightly:
+        _write_outcome(STATE, selfupdate.upgrade_outcome(pull, tests, changed, restarted=restarted))
     sys.stdout.write(selfupdate.format_report(pull, tests, safe, message, restarted=restarted))
     return 0 if safe else 1
 

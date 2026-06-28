@@ -33,12 +33,13 @@
   `groundskeeper` (silent storage hygiene), `watchdog` (sd_notify self-heal), `selfupdate`
   (health-gated nightly upgrade + authority-freeze), `desktop` (safe PC control), `watchlog`
   (the full watch history + recommendations), `commands` (owner-typed /commands), `models`
-  (switchable general/dev brains), `canonical`, `ritual`, `gist` + `gist_store` (the
-  nightly-distilled memory: earned persistence, runs in the ritual); the anti-nag waist `voice` +
+  (switchable general/dev brains), `canonical`, `ritual` + `overnight` (the nightly self-renewal:
+  live abort gates so it never recycles mid-film + ONE honest morning word), `gist` + `gist_store`
+  (the nightly-distilled memory: earned persistence, runs in the ritual); the anti-nag waist `voice` +
   `speech_budget`; the morning surface `journal` + `recap` + `agenda` + `briefing` + `route`;
   the HA hand `ha` + `ws` + `ha_discovery`; the eyes `camera` (registry + zone-allowlist +
   go2rtc/Frigate config-gen)), `perception/` (`frigate_adapter`, `desktop_adapter` — frames die
-  at the edge), `tiles/` (`personal`, `security`, `lighting`, `desktop`), `tests/` (625 passing),
+  at the edge), `tiles/` (`personal`, `security`, `lighting`, `desktop`), `tests/` (651 passing),
   `scripts/` (`run.py` daemon, `ha_setup.py`, `ha_light.py`, `camera_setup.py`, `update.py`,
   `spine_demo.py`, `status.py`).
 - **Importable notes:** `obsidian/` is a cross-linked Obsidian vault mirroring the docs.

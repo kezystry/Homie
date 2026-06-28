@@ -465,3 +465,56 @@ def render_brief(schemas: list[Schema], *, min_firmness: int = 0) -> list[str]:
             continue
         out.append(line_text(s))
     return out
+
+
+# --------------------------------------------------------------------------- #
+# The fold SUMMARY: what changed between last night's memory and tonight's.
+# Contentless by default (counts, not the firehose) — the overnight composer reads this to
+# answer "did I get smarter last night?" honestly, without ever spoken-leaking specifics.
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class FoldSummary:
+    """The night-over-night delta of the distilled memory. Pure structure; no I/O.
+
+    A line is matched across the night by its STRUCTURAL key (daytype, daypart, tokens) — the
+    same key the fold dedupes on — so an obs that earned promotion to a firm rule is recognised
+    as the *same* line growing up, never a forget + a brand-new learn."""
+
+    learned: tuple[str, ...] = ()     # lines that crossed into firm this night (clauses, for detail)
+    faded: tuple[str, ...] = ()       # firm lines whose belief fell to past-tense ("you used to…")
+    forgotten: int = 0                # lines dropped entirely (forget-drop / prune) — count only
+    kept: int = 0                     # firm lines carried unchanged
+
+    @property
+    def changed(self) -> bool:
+        return bool(self.learned or self.faded or self.forgotten)
+
+
+def _firm(s: Schema) -> bool:
+    return firmness(s.beta) >= GIST_NMIN
+
+
+def summarize_fold(prior: list[Schema], new: list[Schema]) -> FoldSummary:
+    """Compare last night's state to tonight's and report what changed, honestly. Pure.
+
+    `learned` = a line that is firm tonight but was NOT firm last night (newly trustworthy).
+    `faded`   = a line firm in both, but whose confidence dropped below the action threshold
+                (now spoken in the past tense — a routine you've let go).
+    `forgotten` = lines present last night, gone tonight (count only — they're nothing now).
+    """
+    pri = {_match_key(s.daytype, s.daypart, s.tokens): s for s in prior}
+    nw = {_match_key(s.daytype, s.daypart, s.tokens): s for s in new}
+    learned, faded, kept = [], [], 0
+    for k, s in nw.items():
+        if not _firm(s):
+            continue
+        old = pri.get(k)
+        if old is None or not _firm(old):
+            learned.append(_clause(s.tokens))
+        elif confidence_q(old.beta) >= ACTION_THRESHOLD and confidence_q(s.beta) < ACTION_THRESHOLD:
+            faded.append(_clause(s.tokens))
+        else:
+            kept += 1
+    forgotten = sum(1 for k in pri if k not in nw)
+    return FoldSummary(learned=tuple(sorted(learned)), faded=tuple(sorted(faded)),
+                       forgotten=forgotten, kept=kept)

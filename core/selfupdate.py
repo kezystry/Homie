@@ -71,6 +71,21 @@ def should_rollback(pull: dict, tests: dict, changed_files=()) -> bool:
     return False               # green (or authority-held-but-green) → keep
 
 
+def upgrade_outcome(pull: dict, tests: dict, changed_files=(), *, restarted: bool) -> str | None:
+    """The one-word outcome the morning word speaks: 'applied' | 'rolledback' | 'held', or None
+    when there is nothing worth a morning line (no change, or a failed pull). Pure — mirrors the
+    verdict in `changelog_line`, but only for an update that actually changed code."""
+    if not pull.get("changed"):
+        return None
+    if restarted:
+        return "applied"
+    if should_rollback(pull, tests, changed_files):
+        return "rolledback"
+    if authority_touched(changed_files):
+        return "held"
+    return None
+
+
 def changelog_line(pull: dict, tests: dict, safe: bool, message: str, *, when: str) -> str:
     """One owner-readable line per nightly run (Charter 28e: no silent self-change)."""
     verdict = "applied" if safe else ("rolled-back" if should_rollback(pull, tests) else "held")

@@ -101,6 +101,7 @@ class GistCollector:
         self._day: list[tuple[int, tuple[str, ...]]] = []   # (minute, tokens) for the current day
         self._saw_presence = False
         self._subs: list = []
+        self.last_summary = None    # FoldSummary of the most recent fold (what changed last night)
 
     async def start(self) -> None:
         topics = list(_PRESENCE) + [_ACTUATOR]
@@ -123,8 +124,9 @@ class GistCollector:
     def fold(self, now: float) -> int:
         """Fold the buffered day into the persisted state and clear the buffer. Returns the
         number of observations folded. Called from the nightly ritual (before log rotation)."""
-        from core.gist import DayObs
+        from core.gist import DayObs, summarize_fold
         if not self._day:
+            self.last_summary = None
             return 0
         dt = datetime.fromtimestamp(now, self._tz) if self._tz else datetime.fromtimestamp(now)
         daytype = daytype_of(dt.date().isoformat(), away=not self._saw_presence)
@@ -132,6 +134,9 @@ class GistCollector:
         prior = self.store.load()
         new_state = fold_day(prior, obs, daytype=daytype, off_zones=self.off_zones)
         self.store.save(new_state)
+        # Capture the night-over-night delta BEFORE clearing the buffer; the save above is the
+        # commit point (it raises on failure, so the buffer is kept and nothing is lost).
+        self.last_summary = summarize_fold(prior, new_state)
         n = len(obs)
         self._day = []
         self._saw_presence = False

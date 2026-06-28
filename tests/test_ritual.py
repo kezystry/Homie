@@ -77,7 +77,7 @@ class RitualTests(unittest.IsolatedAsyncioTestCase):
             await bus.aclose()
 
     async def test_each_gate_fences_independently(self) -> None:
-        for gate in ("security_live", "gaming"):
+        for gate in ("security_live", "gaming", "media_live"):
             with TemporaryDirectory() as d:
                 bus, remember = await seeded_bus(Path(d))
                 sup = SpySupervisor({"broken": "QUARANTINED"})
