@@ -1,0 +1,24 @@
+# Home Assistant — the device layer (eyes, ears, hands) Homie drives.
+#
+# Run it with:   cd deploy/homeassistant && docker compose up -d
+# Open it at:    http://<this-machine-ip>:8123
+#
+# This is portable: run it on the main PC now to get going, and later copy this folder
+# (with ./config) to the always-on mini-PC and `docker compose up -d` there — same HA,
+# same bulbs, no re-pairing. Everything stays LOCAL; HA talks only to your LAN devices.
+services:
+  homeassistant:
+    container_name: homeassistant
+    image: ghcr.io/home-assistant/home-assistant:stable
+    restart: unless-stopped
+    # Host networking lets HA discover the DIRIGERA hub + Tradfri bulbs on your LAN
+    # (local discovery needs it). Linux only. On Windows/macOS Docker Desktop, delete
+    # this line and uncomment the `ports:` block below instead (discovery is then manual).
+    network_mode: host
+    # ports:
+    #   - "8123:8123"
+    environment:
+      TZ: Europe/Berlin          # match docs/DECISIONS (HOMIE_TZ) so times line up with Homie
+    volumes:
+      - ./config:/config         # HA's data lives here, next to this file — back this up
+      - /etc/localtime:/etc/localtime:ro

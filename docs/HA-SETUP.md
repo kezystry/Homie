@@ -9,11 +9,21 @@ patterns from the same connection (the friction loop).
 
 ---
 
-## 1 · Home Assistant on the mini-PC
+## 1 · Start Home Assistant
 
-HA must run on the always-on mini-PC (so the lights work even while the GPU brain sleeps).
-Install Home Assistant OS or the container per the [official docs](https://www.home-assistant.io/installation/),
-then open it at `http://mini-pc.local:8123` and finish the onboarding.
+The repo ships a ready-to-run container: **[`deploy/homeassistant/`](../deploy/homeassistant/)**.
+
+```
+cd deploy/homeassistant
+docker compose up -d            # start HA
+```
+
+Then open `http://<this-machine-ip>:8123`, wait ~1 minute, and create your account.
+
+Long-term HA belongs on the **always-on mini-PC** (so the lights work even while the GPU brain
+sleeps). To get going you can run it on the main PC for now and move it later — see
+`deploy/homeassistant/README.md`. (Heads-up: while HA is on the main PC, that PC must be awake
+for the lights to respond, and don't add a real door lock there.)
 
 ## 2 · Pair the DIRIGERA hub (this discovers every bulb)
 
