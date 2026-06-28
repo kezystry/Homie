@@ -30,13 +30,16 @@
 - **Code:** `core/` (`bus`, `remember` (now with honest `prob`/`firm` beliefs), `tile`
   runtime + channels, `clock`, `mesh`, `act` + `capability`, `reason` (cortex) + `serving`,
   `reconcile`, `consent`, `confirm_responder`, `friction_ledger` + `undo` (one-tap reversal),
-  `groundskeeper` (silent storage hygiene), `canonical`, `ritual`, `gist` + `gist_store` (the
+  `groundskeeper` (silent storage hygiene), `watchdog` (sd_notify self-heal), `selfupdate`
+  (health-gated nightly upgrade + authority-freeze), `desktop` (safe PC control), `watchlog`
+  (the full watch history + recommendations), `canonical`, `ritual`, `gist` + `gist_store` (the
   nightly-distilled memory: earned persistence, runs in the ritual); the anti-nag waist `voice` +
   `speech_budget`; the morning surface `journal` + `recap` + `agenda` + `briefing` + `route`;
   the HA hand `ha` + `ws` + `ha_discovery`; the eyes `camera` (registry + zone-allowlist +
-  go2rtc/Frigate config-gen)), `perception/` (`frigate_adapter` — frames die at the edge),
-  `tiles/` (`personal`, `security`, `lighting`), `tests/` (529 passing), `scripts/` (`run.py`
-  daemon, `ha_setup.py`, `ha_light.py`, `camera_setup.py`, `spine_demo.py`, `status.py`).
+  go2rtc/Frigate config-gen)), `perception/` (`frigate_adapter`, `desktop_adapter` — frames die
+  at the edge), `tiles/` (`personal`, `security`, `lighting`, `desktop`), `tests/` (595 passing),
+  `scripts/` (`run.py` daemon, `ha_setup.py`, `ha_light.py`, `camera_setup.py`, `update.py`,
+  `spine_demo.py`, `status.py`).
 - **Importable notes:** `obsidian/` is a cross-linked Obsidian vault mirroring the docs.
 
 ## Decided architecture (see docs/PLAN.md)

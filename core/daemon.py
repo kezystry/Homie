@@ -54,6 +54,7 @@ from core.reconcile import StateReconciler
 from core.remember import Remember
 from core.gist_store import GistCollector, GistStore
 from core.ritual import consolidate
+from core.watchdog import Watchdog
 from core.watchlog import WatchLog, WatchTracker
 from core.tile import Supervisor
 from core.undo import Undo
@@ -184,7 +185,19 @@ class Daemon:
         if self.config.housekeep:
             self._spawn(self._housekeep())
         self.started = True
+        # Self-heal watchdog (Charter 27a): prove liveness to systemd so a HUNG daemon recovers.
+        # Only under systemd (NOTIFY_SOCKET set); a harmless no-op in dev/tests.
+        if os.environ.get("NOTIFY_SOCKET"):
+            self._spawn(Watchdog(self._healthy).run())
         log.info("homie: daemon up (cortex=%s, tiles=%s)", self.config.has_cortex, self.sup.status())
+
+    def _healthy(self) -> bool:
+        """Liveness signal for the watchdog: up, with no tile stuck quarantined/degraded."""
+        try:
+            return self.started and not any(
+                s in ("QUARANTINED", "DEGRADED") for s in self.sup.status().values())
+        except Exception:
+            return self.started
 
     def _spawn(self, coro: Awaitable[None]) -> asyncio.Task:
         task = asyncio.ensure_future(coro)

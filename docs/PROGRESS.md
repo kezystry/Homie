@@ -5,7 +5,7 @@ the **what & why**; this file is the **how it's going**. Updated every time a mi
 lands or a decision is taken.*
 
 - **Branch:** `claude/homie-overview-bo4l8v`
-- **Tests:** 562 passing (`python3 -m unittest discover -s tests`) — green on every push
+- **Tests:** 595 passing (`python3 -m unittest discover -s tests`) — green on every push
 - **Last updated:** 2026-06-28, after the **Camera foundation** (registry + positive zone-allowlist +
   go2rtc/Frigate config-gen + the edge adapter where frames die — see [`docs/CAMERA.md`](CAMERA.md)) and
   the **external-audit safety pass** (FIFO confirm queue + exact-match yes/no + the Coherence test that
@@ -58,7 +58,13 @@ SELF ◑ building  Self-sufficiency (Charter 8a/13a/22a/23a/25a/28a from a 5-pro
                  absence fold + nmin promote + OFF-fence + bounded prune) · slice 6 prose brief
                  (tense=honesty) · slice 7 store+collector wired into the ritual (runs nightly,
                  persisted .ddn) · S1.5 earned persistence (Mechanism 2, 3-pro council: belief
-                 fades fast, record lingers years). Next: S2 self-cycle · S3 consent/gallery.
+                 fades fast, record lingers years). S2 self-cycle ✅: health-gated self-upgrade
+                 (authority-freeze + auto-rollback + changelog) + sd_notify self-heal watchdog +
+                 NixOS nightly timer. Next: S3 consent/gallery.
+DESK ◑ building  Main-PC eyes+hands (3-pro council) — DesktopAdapter (X11 facts not frames) ✅ ·
+                 full WatchLog + recommendation engine (titles + taste + predictions) ✅ · desktop
+                 tile + safe capability-gated control (fixed verb allowlist, no exec) ✅. Next:
+                 deploy wiring + auto-behaviors (dim on film-start) + the recommend page surface.
 M7   ⏳ planned    Positive-schema privacy guard + Dream Journal (retrieval)
 M8   ⏳ planned    Friction Ledger pane + one-key undo
 M9   ⏳ planned    Deploy posture + confinement

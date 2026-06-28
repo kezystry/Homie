@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -88,7 +89,8 @@ def main(argv: list[str]) -> int:
             safe = False
 
     if pull.get("changed") and not args.check:
-        _append_changelog(selfupdate.changelog_line(pull, tests, safe, message, when=args.now or "—"))
+        when = args.now or datetime.now().strftime("%Y-%m-%d %H:%M")
+        _append_changelog(selfupdate.changelog_line(pull, tests, safe, message, when=when))
     sys.stdout.write(selfupdate.format_report(pull, tests, safe, message, restarted=restarted))
     return 0 if safe else 1
 

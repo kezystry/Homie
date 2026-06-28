@@ -88,8 +88,20 @@
     wantedBy = [ "multi-user.target" ];
     after = [ "network.target" "local-fs.target" ];
 
+    # Crash-loop ceiling (Charter 27a): if it restarts >5 times in 5 min, STOP and surface the
+    # fault to the owner rather than thrashing silently. A box that restart-loops forever is
+    # hiding a problem — that's the opposite of self-healed.
+    startLimitIntervalSec = 300;
+    startLimitBurst = 5;
+
     serviceConfig = {
       ExecStart = "${pkgs.python311}/bin/python3 /opt/homie/scripts/run.py";
+      # Liveness watchdog (Charter 27a): the daemon proves it's alive with sd_notify; if it
+      # wedges (hung but not crashed), systemd kills + restarts it. Type=notify lets it send
+      # READY=1 on boot and WATCHDOG=1 on the heartbeat (core/watchdog.py).
+      Type = "notify";
+      WatchdogSec = "60s";
+      NotifyAccess = "main";
       WorkingDirectory = "/opt/homie";
       Environment = [
         "HOMIE_STATE=/var/lib/homie"
@@ -128,6 +140,35 @@
       LockPersonality = true;
       SystemCallArchitectures = "native";
       StateDirectory = "homie"; # -> /var/lib/homie (writable: the event log)
+    };
+  };
+
+  # ---------------------------------------------------------------------------
+  # Nightly self-upgrade (Charter 28/28a): pull → run the full suite as a health
+  # gate → auto-rollback if unsafe → hold any authority change for the owner →
+  # restart onto the new code → append the changelog. Runs on the always-on node.
+  # ---------------------------------------------------------------------------
+  systemd.services.homie-nightly = {
+    description = "Homie nightly self-upgrade (pull, health-gate, rollback, restart)";
+    after = [ "network-online.target" ];
+    wants = [ "network-online.target" ];
+    path = [ pkgs.git ];
+    serviceConfig = {
+      Type = "oneshot";
+      WorkingDirectory = "/opt/homie";
+      # --auto: roll back to last-good if the pulled code fails the suite; --restart: apply a
+      # healthy, non-authority update. Needs root to git-pull and restart the service.
+      ExecStart = "${pkgs.python311}/bin/python3 /opt/homie/scripts/update.py --auto --restart";
+    };
+  };
+
+  systemd.timers.homie-nightly = {
+    description = "Run Homie's nightly self-upgrade at 04:00 (Persistent: catches a missed boot)";
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnCalendar = "*-*-* 04:00:00";
+      Persistent = true;
+      RandomizedDelaySec = "600";
     };
   };
 
