@@ -50,6 +50,7 @@ _HELP = [
     "  /status      — is Homie up, what it knows, what's playing",
     "  /now         — what you're watching right now",
     "  /recommend   — your picks & taste (the recommendation page)",
+    "  /know [word] — what Homie has learned about your routines (the Dream Journal)",
     "  /mute [min]  — quiet for a while   ·   /unmute",
     "  /close [app] — close the active window, or a named app (e.g. /close stremio)",
     "  /private on|off — stop/allow watching your screen",
@@ -102,6 +103,8 @@ class SlashCommands:
             return self._now()
         if cmd in ("recommend", "watch", "recommendations"):
             return self._recommend()
+        if cmd in ("know", "knows", "memory"):
+            return self._know(args)
         if cmd == "mute":
             seconds = _minutes_arg(args) * 60.0 if args else 3600.0
             await self.bus.publish(Event("voice.mute", ts, {"seconds": seconds}, source="commands"))
@@ -178,6 +181,27 @@ class SlashCommands:
             return "\n".join(lines)
         except Exception:
             return "No watch history yet."
+
+    def _know(self, args: list[str]) -> str:
+        """The Dream Journal as a page: the firm, plain-words lines from the distilled GIST
+        memory (`/know`), optionally filtered to those mentioning a word (`/know kitchen`).
+        Honest-empty while nothing is firm yet — never a guess dressed as a fact."""
+        if self.state is None:
+            return "I'm still learning your routines — nothing I'd state as fact yet."
+        try:
+            from core.gist import render_brief
+            from core.gist_store import GistStore
+            lines = render_brief(GistStore(self.state / "memory.ddn").load(), min_firmness=3)
+        except Exception:
+            lines = []
+        if args:
+            needle = args[0].lower()
+            lines = [ln for ln in lines if needle in ln.lower()]
+            if not lines:
+                return f"Nothing firm about “{args[0]}” yet."
+        if not lines:
+            return "I'm still learning your routines — nothing I'd state as fact yet."
+        return "\n".join(["Here's what I've learned:"] + [f"  · {ln}" for ln in lines])
 
     # -- system actions ------------------------------------------------------- #
     def _system(self, cmd: str) -> str:

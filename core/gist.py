@@ -468,6 +468,49 @@ def render_brief(schemas: list[Schema], *, min_firmness: int = 0) -> list[str]:
 
 
 # --------------------------------------------------------------------------- #
+# The Dream Journal (M7): retrieval over the distilled memory. NOT a new store and NOT an
+# embedder — the GIST schema keys are already a pre-tokenised structured index (daytype,
+# daypart, sorted tokens), so relevance is deterministic integer facet-overlap, computable on
+# the always-on node with no GPU, no float, no model. An "episode summary" is just line_text(s);
+# recall is a QUERY over the memory that already exists. (Council: ML-retrieval engineer.)
+# --------------------------------------------------------------------------- #
+_RECALL_W_DAYTYPE = 4   # same kind of day (wd/we/aw) — gates Saturday from Tuesday
+_RECALL_W_DAYPART = 2   # same part of day — a soft nudge
+_RECALL_W_TOKEN = 3     # a shared token (the zone/domain) — the strongest "same situation" signal
+
+
+def recall(schemas: list[Schema], *, daytype: str, daypart: str, tokens,
+           k: int = 3, min_firmness: int = GIST_NMIN) -> list[str]:
+    """The honest lines most relevant to *this* moment, for injection into the cortex context.
+
+    Pure, deterministic, integer-scored. Only FIRM lines recall (`min_firmness` = the evidence
+    floor) so a tentative 'starting to notice' guess never steers a live decision — the honesty
+    contract, enforced at the retrieval seam. A line that shares no facet scores 0 and is
+    dropped, so an irrelevant moment honestly recalls nothing (`[]`) rather than padding noise.
+
+    Relevance requires situational overlap: a line surfaces only if it shares a token (the
+    zone/activity of the moment), with same-daytype / same-daypart as ranking boosts — so a
+    line never surfaces merely because "it's also a weekday." Ranking is a total order on a
+    tuple — (−score, −payoff, canonical key) — never on a bare score, so ties break
+    deterministically (replay-stable under LANG/PYTHONHASHSEED, the discipline `render_brief`
+    and the prune already use)."""
+    ev_tok = frozenset(tokens)
+    scored = []
+    for s in schemas:
+        if firmness(s.beta) < min_firmness:
+            continue
+        overlap = len(ev_tok & set(s.tokens))
+        if overlap == 0:
+            continue                         # no situational overlap → not THIS moment's memory
+        score = _RECALL_W_TOKEN * overlap \
+            + (_RECALL_W_DAYTYPE if s.daytype == daytype else 0) \
+            + (_RECALL_W_DAYPART if s.daypart == daypart else 0)
+        scored.append(((-score, -_payoff(s), s.key()), s))
+    scored.sort(key=lambda t: t[0])
+    return [line_text(s) for _, s in scored[:k]]
+
+
+# --------------------------------------------------------------------------- #
 # The fold SUMMARY: what changed between last night's memory and tonight's.
 # Contentless by default (counts, not the firehose) — the overnight composer reads this to
 # answer "did I get smarter last night?" honestly, without ever spoken-leaking specifics.

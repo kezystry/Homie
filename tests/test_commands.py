@@ -42,6 +42,26 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
         replies, _ = await self._run("/frobnicate")
         self.assertIn("/help", replies[-1])
 
+    async def test_know_surfaces_the_dream_journal(self) -> None:
+        from core.gist import Beta, Schema
+        from core.gist_store import GistStore
+        firm = Schema(kind="rule", daytype="wd", daypart="eve", tokens=("media", "plex"),
+                      beta=Beta(a_q=8000, b_q=0))     # firmness 3 → a firm, present-tense line
+        with TemporaryDirectory() as d:
+            GistStore(Path(d) / "memory.ddn").save([firm])
+            replies, _ = await self._run("/know", state=Path(d))
+            self.assertTrue(any("plex" in r.lower() for r in replies))
+            # filtered to a word that matches
+            hit, _ = await self._run("/know plex", state=Path(d))
+            self.assertTrue(any("plex" in r.lower() for r in hit))
+            # filtered to a word that doesn't
+            miss, _ = await self._run("/know kitchen", state=Path(d))
+            self.assertIn("Nothing firm", miss[-1])
+
+    async def test_know_is_honest_empty_without_memory(self) -> None:
+        replies, _ = await self._run("/know")
+        self.assertIn("still learning", replies[-1])
+
     async def test_mute_publishes_voice_mute(self) -> None:
         replies, events = await self._run("/mute 30")
         self.assertEqual(events[0][0], "voice.mute")

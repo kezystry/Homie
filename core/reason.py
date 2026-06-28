@@ -151,16 +151,23 @@ def should_wake(exp) -> bool:
     return bool(getattr(exp, "novel", False)) or getattr(exp, "rate", 0.0) < WAKE_RATE
 
 
-def build_context(event: Event, exp) -> dict:
+def build_context(event: Event, exp, recalled=None) -> dict:
     """Assemble the prompt context for the model from the event and what Remember
-    expects here. A plain dict — the deploy-side client renders it into a prompt."""
-    return {
+    expects here. A plain dict — the deploy-side client renders it into a prompt.
+
+    `recalled` (M7 Dream Journal): the firm, on-situation lines retrieved from the distilled
+    GIST memory. Present in the context ONLY when non-empty, so the contract stays visible — a
+    decision either had relevant memory or it didn't."""
+    ctx = {
         "topic": event.topic,
         "zone": event.payload.get("zone"),
         "ts": event.ts,
         "payload": dict(event.payload),
         "expectation": {"rate": getattr(exp, "rate", None), "novel": getattr(exp, "novel", None)},
     }
+    if recalled:
+        ctx["recalled"] = list(recalled)
+    return ctx
 
 
 class Reason:
@@ -175,7 +182,7 @@ class Reason:
     def __init__(self, bus, llm: LLMClient, supervisor, remember, *, system_prompt: str = SYSTEM_PROMPT,
                  ledger: WakeLedger | None = None, budget: WakeBudget | None = None,
                  gate: SurpriseGate | None = None, slo: LatencySLO | None = None,
-                 warm: WarmPolicy | None = None, memory_brief=None,
+                 warm: WarmPolicy | None = None, memory_brief=None, recall=None, recall_cap: int = 3,
                  now: Callable[[], float] = time.monotonic) -> None:
         self.bus = bus
         self.llm = llm
@@ -186,6 +193,11 @@ class Reason:
         # routines + the distilled GIST), injected into the chat context so answers are informed
         # by what it has learned. None = no memory in context (the cortex still works).
         self._memory_brief = memory_brief
+        # The Dream Journal (M7): a recall(event) -> list[str] provider of the firm, on-situation
+        # GIST lines relevant to THIS moment, injected into the wake context so a decision is
+        # informed by what the home has learned. None = no recall (the cortex still works).
+        self._recall = recall
+        self._recall_cap = recall_cap
         # Wake governance (M3): SEE it (ledger), CALIBRATE it (per-zone surprise), CAP it
         # (event-clocked token bucket). Defaults are generous enough that a single moment
         # always wakes — the budget only bites under a sustained cold-start flood (C8).
@@ -302,8 +314,8 @@ class Reason:
         tools = self.sup.tool_catalog()
         try:
             proposal = await self._timed_propose(
-                system=self.system, context=build_context(event, exp), tools=tools,
-                ts=event.ts, kind="wake")
+                system=self.system, context=build_context(event, exp, self._recalled(event)),
+                tools=tools, ts=event.ts, kind="wake")
         except Exception as ex:  # a model/serving failure must never crash the bus
             log.warning("reason: LLM propose failed (%r); standing down", ex)
             return False
@@ -341,6 +353,16 @@ class Reason:
             return []
         try:
             return list(self._memory_brief())[:cap]
+        except Exception:
+            return []
+
+    def _recalled(self, event: Event) -> list[str]:
+        """The firm GIST lines relevant to this moment — capped, guarded (a recall fault must
+        never crash a decision; the cortex just proceeds without memory)."""
+        if self._recall is None:
+            return []
+        try:
+            return list(self._recall(event))[:self._recall_cap]
         except Exception:
             return []
 

@@ -416,7 +416,31 @@ def build_daemon(home, perception: Perception | None, *, config: DaemonConfig | 
                 pass
         return lines
 
-    reason = Reason(bus, config.llm or NullLLMClient(), sup, remember, memory_brief=_memory_brief)
+    # The Dream Journal (M7): recall the firm GIST lines relevant to THIS moment, for the wake
+    # context. Pure lexical query over the distilled memory — no embedder, no GPU; runs on the
+    # always-on node. The store is re-read per wake (a ≤256-line file) so a nightly fold is
+    # picked up without a restart. None state → no recall (the cortex still decides).
+    def _recall(event):
+        if config.state is None:
+            return []
+        try:
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+            from core.gist import daypart_of, daytype_of, recall as gist_recall
+            from core.gist_store import GistStore, event_tokens
+            toks = event_tokens(event)
+            if not toks:
+                return []
+            tz = os.environ.get("HOMIE_TZ")
+            dt = datetime.fromtimestamp(event.ts, ZoneInfo(tz) if tz else None)
+            schemas = GistStore(Path(config.state) / "memory.ddn").load()
+            return gist_recall(schemas, daytype=daytype_of(dt.date().isoformat()),
+                               daypart=daypart_of(dt.hour * 60 + dt.minute), tokens=toks)
+        except Exception:
+            return []
+
+    reason = Reason(bus, config.llm or NullLLMClient(), sup, remember,
+                    memory_brief=_memory_brief, recall=_recall)
 
     # The Voice waist: the ONE governor on owner-facing speech. Tiles and the cortex emit
     # interface.say; this gate decides what the owner actually hears (interface.spoken) and
