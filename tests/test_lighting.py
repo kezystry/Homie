@@ -254,6 +254,42 @@ class LightingTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(acts, [])                  # and never lights
             await consent.stop(); await bus.aclose()
 
+    async def test_film_start_dims_then_stop_restores(self) -> None:
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            bus, sup, acts, offers, consent = await self._sup_consent(root, answer=True)
+            await bus.publish(Event("media.activity", at(21),
+                                    {"app": "stremio", "state": "playing", "kind": "film"}))
+            await bus.drain()
+            dims = [a for a in acts if a.payload["actuator"] == "light.living_room"]
+            self.assertEqual(dims[-1].payload["value"], {"state": "on", "brightness_pct": 15})
+            await bus.publish(Event("media.activity", at(23),
+                                    {"app": "stremio", "state": "stopped", "kind": "film"}))
+            await bus.drain()
+            restore = [a for a in acts if a.payload["actuator"] == "light.living_room"][-1]
+            self.assertEqual(restore.payload["value"], {"state": "on"})   # film over → lights back up
+            await consent.stop(); await bus.aclose()
+
+    async def test_series_does_not_dim(self) -> None:
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            bus, sup, acts, offers, consent = await self._sup_consent(root, answer=True)
+            await bus.publish(Event("media.activity", at(21),
+                                    {"app": "stremio", "state": "playing", "kind": "series"}))
+            await bus.drain()
+            self.assertEqual(acts, [])               # only films dim the room
+            await consent.stop(); await bus.aclose()
+
+    async def test_daytime_film_does_not_dim(self) -> None:
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            bus, sup, acts, offers, consent = await self._sup_consent(root, answer=True)
+            await bus.publish(Event("media.activity", at(13),
+                                    {"app": "stremio", "state": "playing", "kind": "film"}))
+            await bus.drain()
+            self.assertEqual(acts, [])               # daylight — no dimming
+            await consent.stop(); await bus.aclose()
+
     async def test_security_request_outranks_ambient_light(self) -> None:
         with TemporaryDirectory() as d:
             root = Path(d)
