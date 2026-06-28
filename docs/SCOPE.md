@@ -22,8 +22,16 @@ This is the *whole* near-term build. Everything else is deferred.
 
 1. **The 3 GIST stat fixes in `remember.py`** + the `nmin` evidence floor — *fixes a live bug*
    (present_days makes confidence exceed 1.0 today), so this jumps the queue.
+   - ✅ **FIX-1 (the live bug) + FIX-2 + `nmin` shipped:** `Expectation.prob ∈ [0,1]` (decayed
+     present-days at this hour ÷ a GLOBAL active-day denominator), so a stopped routine
+     mean-reverts in days and a belief can never be more certain than possible; `firm` gates
+     on `NMIN_DAYS`. `rate` is unchanged (the cortex's rarity signal). v2→v3 migration + a
+     determinism/round-trip suite (`tests/test_prob.py`).
+   - ⏳ **FIX-3 (day-type axis `{wd, we, aw}`) pending** — so a weekend lie-in can't poison the
+     weekday schema. Deferred to the next slice (it changes the key shape; kept separate to stay
+     reviewable).
 2. **The crash-safe nightly fold** (fsync the distilled notes via temp+atomic-rename BEFORE
-   rotating the raw log) + a replay/determinism test.
+   rotating the raw log) + a replay/determinism test. ⏳ pending.
 3. **The Recap Composer** — a deterministic, template-first morning note (Yesterday / Learned /
    Watching / Tidied), caps enforced *in code* (one Learned, one Watching, honest-empty),
    overflow collapsed lossily, written even with no LLM.
