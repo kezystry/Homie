@@ -50,8 +50,13 @@ This is the *whole* near-term build. Everything else is deferred.
      the owner's tasks, builds the Briefing, SPEAKS exactly ONE budgeted line through the
      VoiceGate, and emits the full page on `briefing.ready` (cockpit-visible). Quiet day → it
      stays silent but still renders an honest page. Tests: `tests/test_briefing_wiring.py`.
-   - ⏳ **Next:** the backward recap line (nightly fold composes `recap_line`) + live HA
-     calendar/weather/todo source adapters wired to real entities + on-page correction.
+   - ✅ **Backward recap line:** `core/recap.py` — a pure, capped, honest-empty composer of
+     yesterday in one plain line (weekday + presence + ≤1 did + ≤1 correction + quiet-held
+     count). Wired above the briefing; renders an honest weekday line today, enriched as the
+     nightly fold composes richer facts.
+   - ⏳ **Next:** live HA calendar/weather/todo source adapters wired to real entities; the
+     nightly fold composing rich recap facts (presence windows, corrections, quiet-held); and
+     on-page correction (`memory.overlay` + the three one-tap actions).
 4. **The "What Homie Knows" page + `memory.overlay`** — plain rows from the GIST brief, each
    with a confidence word + provenance ("from 32 days" vs "from 3 days"), three one-tap
    actions ([that's me] / [not quite] / [lock]).

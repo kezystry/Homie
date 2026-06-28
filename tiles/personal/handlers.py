@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 
 from core import agenda
 from core import briefing as briefing_mod
+from core import recap as recap_mod
 from core.tile import Context, Event, Tile
 
 BRIEFING_READY = "briefing.ready"
@@ -59,8 +60,7 @@ class Personal(Tile):
                 source="personal", source_id=str(text)))
 
         view = agenda.AgendaView(items, tz=os.environ.get("HOMIE_TZ"))
-        recap = self.state.get("recap_line")  # composed by the nightly fold later; optional now
-        brief = briefing_mod.build(view, now, tz=tz, recap_line=recap)
+        brief = briefing_mod.build(view, now, tz=tz, recap_line=self._recap_line(now, tz))
 
         # ONE budgeted proactive line through the VoiceGate; the full page goes to the screen.
         line = brief.speak_line()
@@ -69,6 +69,16 @@ class Personal(Tile):
         await ctx.emit(Event(BRIEFING_READY, now,
                              {"text": brief.render_text(), "lines": brief.render_lines()},
                              source="tile:personal"))
+
+    def _recap_line(self, now: float, tz) -> str:
+        """Yesterday's one-line recap. A richer nightly fold may pre-compose `recap_line`
+        (presence windows, corrections, the quiet-held count); until then we render an honest
+        weekday-led line so the backward half of the surface is always present."""
+        pre = self.state.get("recap_line")
+        if pre:
+            return pre
+        yesterday = datetime.fromtimestamp(now - 86400, tz) if tz else datetime.fromtimestamp(now - 86400)
+        return recap_mod.compose(recap_mod.RecapFacts(weekday=yesterday.strftime("%A")))
 
     # -- voice / LLM functions (unchanged contract) --------------------------- #
     async def agenda(self, ctx: Context) -> list[str]:
