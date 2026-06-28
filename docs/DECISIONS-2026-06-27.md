@@ -108,6 +108,27 @@ plan in chat. Where an answer changes a prior assumption, this file wins.
   timing/pattern is genuinely unusual or clearly wrong** (options 2+3 combined). Never a chatty
   who-comes-and-goes feed. Mum's flat remains OFF-LIMITS (no camera, no presence, unrepresentable).
 
+## Morning surface — recap + day briefing (2026-06-28)
+The owner asked for a **day briefing** alongside the morning recap: "what's on today, the easiest
+route, the most logical and smart organizing system." Design direction (a focused council is
+refining it): one unified **Agenda** (typed, time/place/deadline-anchored items from many sources)
+with **two renders over the same memory** — a backward **Recap** and a forward **Briefing**. Owner
+decisions:
+- **First source of "today's things": Home Assistant calendar + to-do lists** (local, no new online
+  account; the phone calendar can sync into HA). More sources (parcels, KartenWerk) feed the same
+  Agenda later.
+- **Route = full live maps + traffic, eventually — but gated.** Ship the **smart OFFLINE
+  errand-sequencer** first (orders place-anchored items by appointment time + sensible proximity,
+  always works, fully local); build **live map-routing behind the online-consent gate, asked
+  per use** (honors "never go online without asking"). Offline order is the always-available
+  fallback when online is declined/unavailable.
+- **Briefing leads with all four:** appointments/calendar · to-dos & bills due · parcels &
+  deliveries · weather woven into routine nudges ("rain at 3, you usually cycle").
+- **Same delivery as the recap:** on a screen when home + a phone notification; ONE budgeted
+  proactive surface/day, capped in code, honest-empty, never a wall of text.
+
 ## Still open / to confirm later
 - The owner's interview is captured; remaining specifics (exact DHL access, KartenWerk
   marketplace APIs, day-type calendar for memory, half-life tuning) are deferred to their tiles.
+- **Live-routing provider** (which maps/traffic source, and the per-use consent UX) — to confirm
+  when the online-gated routing slice is built.
